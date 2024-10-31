@@ -14,11 +14,11 @@ from utils.train_metrics import metrics
 from utils.visualize import init_visdom_line, update_lines
 from utils.dice_loss_single_class import dice_coeff_loss
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE131_DEVICES"] = "1"
 
 args = {
-    'root'      : '',
-    'data_path' : 'dataset/DRIVE/',
+    'root'      : '/home/xpetrus/DP/CS-Net',
+    'data_path' : '/home/xpetrus/DP/Datasets/External/DRIVE',
     'epochs'    : 1000,
     'lr'        : 0.0001,
     'snapshot'  : 100,
@@ -72,11 +72,14 @@ def train():
             label = batch[1].cuda()
             optimizer.zero_grad()
             pred = net(image)
-            # pred = pred.squeeze_(1)
+            pred = pred.squeeze_(1)
             loss1 = critrion(pred, label)
+            loss1.backward()
             loss2 = dice_coeff_loss(pred, label)
             loss = loss1 + loss2
             loss.backward()
+            #loss = 
+            
             optimizer.step()
             acc, sen = metrics(pred, label, pred.shape[0])
             print('[{0:d}:{1:d}] --- loss:{2:.10f}\tacc:{3:.4f}\tsen:{4:.4f}'.format(epoch + 1,
@@ -129,4 +132,5 @@ def model_eval(net):
 
 
 if __name__ == '__main__':
+    torch.autograd.set_detect_anomaly(True)
     train()
