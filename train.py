@@ -14,7 +14,7 @@ from utils.train_metrics import metrics
 from utils.visualize import init_visdom_line, update_lines
 from utils.dice_loss_single_class import dice_coeff_loss
 
-os.environ["CUDA_VISIBLE131_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 args = {
     'root'      : '/home/xpetrus/DP/CS-Net',
@@ -53,7 +53,7 @@ def adjust_lr(optimizer, base_lr, iter, max_iter, power=0.9):
 def train():
     # set the channels to 3 when the format is RGB, otherwise 1.
     net = CSNet(classes=1, channels=3).cuda()
-    net = nn.DataParallel(net, device_ids=[0, 1]).cuda()
+    net = nn.DataParallel(net).cuda()
     optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
     critrion = nn.MSELoss().cuda()
     # critrion = nn.CrossEntropyLoss().cuda()
