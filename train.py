@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
+from torchsummary import summary
 import visdom
 import numpy as np
 from model.csnet import CSNet
@@ -14,12 +15,12 @@ from utils.train_metrics import metrics
 from utils.visualize import init_visdom_line, update_lines
 from utils.dice_loss_single_class import dice_coeff_loss
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 args = {
     'root'      : '/home/xpetrus/DP/CS-Net',
     'data_path' : '/home/xpetrus/DP/Datasets/External/DRIVE',
-    'epochs'    : 1000,
+    'epochs'    : 100000,
     'lr'        : 0.0001,
     'snapshot'  : 100,
     'test_step' : 1,
@@ -56,6 +57,10 @@ def train():
     net = nn.DataParallel(net).cuda()
     optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
     critrion = nn.MSELoss().cuda()
+
+    # Print the architecture
+    summary(net)
+
     # critrion = nn.CrossEntropyLoss().cuda()
     print("---------------start training------------------")
     # load train dataset
@@ -66,22 +71,30 @@ def train():
     accuracy = 0.
     sensitivty = 0.
     for epoch in range(args['epochs']):
+        print(f"Epoch {epoch}/{len(range(args['epochs']))}")
         net.train()
         for idx, batch in enumerate(batchs_data):
             image = batch[0].cuda()
             label = batch[1].cuda()
             optimizer.zero_grad()
             pred = net(image)
-            pred = pred.squeeze_(1)
+            #pred = pred.squeeze_(1)
+            #loss = (pred - label).mean()  # TODO: stupid debg prupose
+            #loss.backward()
+            #print(loss)
+            #print(type(loss))
+            #loss.backward()
             loss1 = critrion(pred, label)
-            loss1.backward()
+            #loss1.backward()
             loss2 = dice_coeff_loss(pred, label)
             loss = loss1 + loss2
+            #loss = loss1
             loss.backward()
             #loss = 
             
             optimizer.step()
             acc, sen = metrics(pred, label, pred.shape[0])
+            #acc, sen = 1, 1  # TODO: DBG Stupid
             print('[{0:d}:{1:d}] --- loss:{2:.10f}\tacc:{3:.4f}\tsen:{4:.4f}'.format(epoch + 1,
                                                                                      iters, loss.item(),
                                                                                      acc / pred.shape[0],
@@ -99,15 +112,16 @@ def train():
         if (epoch + 1) % args['snapshot'] == 0:
             save_ckpt(net, epoch + 1)
 
+# TODO: WHAT?
         # model eval
-        if (epoch + 1) % args['test_step'] == 0:
-            test_acc, test_sen = model_eval(net)
-            print("Average acc:{0:.4f}, average sen:{1:.4f}".format(test_acc, test_sen))
+#        if (epoch + 1) % args['test_step'] == 0:
+#            test_acc, test_sen = model_eval(net)
+#            print("Average acc:{0:.4f}, average sen:{1:.4f}".format(test_acc, test_sen))
 
-            if (accuracy > test_acc) & (sensitivty > test_sen):
-                save_ckpt(net, epoch + 1 + 8888888)
-                accuracy = test_acc
-                sensitivty = test_sen
+#           if (accuracy > test_acc) & (sensitivty > test_sen):
+#                save_ckpt(net, epoch + 1 + 8888888)
+#                accuracy = test_acc
+#                sensitivty = test_sen
 
 
 def model_eval(net):

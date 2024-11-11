@@ -41,7 +41,7 @@ class ResEncoder(nn.Module):
         residual = self.conv1x1(x)
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.relu(self.bn2(self.conv2(out)))
-        out += residual
+        out = residual + out
         out = self.relu(out)
         return out
 
@@ -188,8 +188,9 @@ class CSNet(nn.Module):
         # Do Attenttion operations here
         attention = self.affinity_attention(input_feature)
 
-        # attention_fuse = self.attention_fuse(torch.cat((input_feature, attention), dim=1))
+        #attention_fuse = self.attention_fuse(torch.cat((input_feature, attention), dim=1))
         attention_fuse = input_feature + attention
+        # TODO: Try to set attention to 0 for debuggin purposes.
 
         # Do decoder operations here
         up4 = self.deconv4(attention_fuse)

@@ -8,14 +8,17 @@ import os
 import glob
 
 from utils.misc import thresh_OTSU, ReScaleSize, Crop
-from utils.model_eval import eval
+#from utils.model_eval import eval
 
-DATABASE = './DRIVE/'
+DATABASE = '/home/xpetrus/DP/Datasets/External/DRIVE/'
 #
 args = {
-    'root'     : './dataset/' + DATABASE,
-    'test_path': './dataset/' + DATABASE + 'test/',
-    'pred_path': 'assets/' + 'DRIVE/',
+    #'root'     : './dataset/' + DATABASE,
+    #'test_path': './dataset/' + DATABASE + 'test/',
+    #'pred_path': 'assets/' + 'DRIVE/',
+    'root': DATABASE,
+    'test_path': DATABASE + 'test/',
+    'pred_path': './predictions/',
     'img_size' : 512
 }
 
@@ -75,13 +78,14 @@ def load_nerve():
 def load_drive():
     test_images = []
     test_labels = []
+    print(f"DEBUG: test path={args['test_path']}")
     for file in glob.glob(os.path.join(args['test_path'], 'images', '*.tif')):
         basename = os.path.basename(file)
         file_name = basename[:3]
         image_name = os.path.join(args['test_path'], 'images', basename)
-        label_name = os.path.join(args['test_path'], '1st_manual', file_name + 'manual1.gif')
+        #label_name = os.path.join(args['test_path'], '1st_manual', file_name + 'manual1.gif')
         test_images.append(image_name)
-        test_labels.append(label_name)
+        test_labels.append(image_name)
     return test_images, test_labels
 
 
@@ -125,7 +129,9 @@ def load_octa():
 
 
 def load_net():
-    net = torch.load('./checkpoint/xxxx.pkl')
+    #net = torch.load('./checkpoint/xxxx.pkl')
+    torch.serialization.add_safe_globals('torch.nn.parallel.data_parallel.DataParallel')
+    net = torch.load('./checkpoint/CS_Net_DRIVE_9900.pkl', weights_only=False)
     return net
 
 
@@ -137,7 +143,9 @@ def save_prediction(pred, filename=''):
     mask = pred.data.cpu().numpy() * 255
     mask = np.transpose(np.squeeze(mask, axis=0), [1, 2, 0])
     mask = np.squeeze(mask, axis=-1)
-    misc.imsave(save_path + filename + '.png', mask)
+    #misc.imsave(save_path + filename + '.png', mask)
+    import skimage.io as skio
+    skio.imsave(save_path+filename+'.tif', mask)
 
 
 def predict():
@@ -153,7 +161,10 @@ def predict():
     ])
 
     with torch.no_grad():
+        print("DEBUG: Running net eval")
         net.eval()
+        print("len(images)")
+        print(images)
         for i in range(len(images)):
             print(images[i])
             name_list = images[i].split('/')
@@ -161,13 +172,16 @@ def predict():
             image = Image.open(images[i])
             # image=image.convert("RGB")
             label = Image.open(labels[i])
-            image, label = center_crop(image, label)
+            #image, label = center_crop(image, label)
 
             # for other retinal vessel
             # image = rescale(image)
             # label = rescale(label)
             # image = ReScaleSize_STARE(image, re_size=args['img_size'])
             # label = ReScaleSize_DRIVE(label, re_size=args['img_size'])
+
+            image = ReScaleSize_DRIVE(image, re_size=args['img_size'])
+            label = ReScaleSize_DRIVE(label, re_size=args['img_size'])
 
             # for OCTA
             # image = Crop(image)
@@ -177,7 +191,10 @@ def predict():
 
             # label = label.resize((args['img_size'], args['img_size']))
             # if cuda
+
+            
             image = transform(image).cuda()
+            print(image.cpu().shape)
             # image = transform(image)
             image = image.unsqueeze(0)
             output = net(image)
@@ -188,4 +205,4 @@ def predict():
 
 if __name__ == '__main__':
     predict()
-    thresh_OTSU(args['pred_path'] + 'pred/')
+    #thresh_OTSU(args['pred_path'] + 'pred/')

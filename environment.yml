@@ -24,4 +24,5 @@ dependencies:
   - pip:
     - visdom==0.2.4
     - SimpleITK
+    - torch-summary
 
