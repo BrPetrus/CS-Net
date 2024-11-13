@@ -151,20 +151,25 @@ def train_with_kfodl():
 
 
 def train():
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
+    print(f"Using {device} device")
 
     # set the channels to 3 when the format is RGB, otherwise 1.
-    net = CSNet(classes=1, channels=3).cuda()
-    net = nn.DataParallel(net).cuda()
+    net = CSNet(classes=1, channels=3).to(device)
+    net = nn.DataParallel(net).to(device)
     optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
-    critrion = nn.MSELoss().cuda()
-
-    # Print the architecture
-    summary(net)
-
+    critrion = nn.MSELoss().to(device)
     # critrion = nn.CrossEntropyLoss().cuda()
     print("---------------start training------------------")
     # load train dataset
     train_data = Data(args['data_path'], train=True)
+    # TODO: num_workers ~> args
     batchs_data = DataLoader(train_data, batch_size=args['batch_size'], num_workers=2, shuffle=True)
 
     iters = 1
@@ -174,27 +179,19 @@ def train():
     for epoch in range(args['epochs']):
         print(f"Epoch {epoch}/{len(range(args['epochs']))}")
         for idx, batch in enumerate(batchs_data):
-            image = batch[0].cuda()
-            label = batch[1].cuda()
+            image = batch[0].to(device)
+            label = batch[1].to(device)
             optimizer.zero_grad()
             pred = net(image)
-            #pred = pred.squeeze_(1)
-            #loss = (pred - label).mean()  # TODO: stupid debg prupose
-            #loss.backward()
-            #print(loss)
-            #print(type(loss))
-            #loss.backward()
+            pred = pred.squeeze_(1)
             loss1 = critrion(pred, label)
-            #loss1.backward()
+            loss1.backward()
             loss2 = dice_coeff_loss(pred, label)
             loss = loss1 + loss2
-            #loss = loss1
             loss.backward()
-            #loss = 
             
             optimizer.step()
             acc, sen = metrics(pred, label, pred.shape[0])
-            #acc, sen = 1, 1  # TODO: DBG Stupid
             print('[{0:d}:{1:d}] --- loss:{2:.10f}\tacc:{3:.4f}\tsen:{4:.4f}'.format(epoch + 1,
                                                                                      iters, loss.item(),
                                                                                      acc / pred.shape[0],
@@ -212,19 +209,19 @@ def train():
         if (epoch + 1) % args['snapshot'] == 0:
             save_ckpt(net, epoch + 1)
 
-# TODO: WHAT?
         # model eval
-#        if (epoch + 1) % args['test_step'] == 0:
-#            test_acc, test_sen = model_eval(net)
-#            print("Average acc:{0:.4f}, average sen:{1:.4f}".format(test_acc, test_sen))
+        if (epoch + 1) % args['test_step'] == 0:
+            test_acc, test_sen = model_eval(net)
+            print("Average acc:{0:.4f}, average sen:{1:.4f}".format(test_acc, test_sen))
 
-#           if (accuracy > test_acc) & (sensitivty > test_sen):
-#                save_ckpt(net, epoch + 1 + 8888888)
-#                accuracy = test_acc
-#                sensitivty = test_sen
+            if (accuracy > test_acc) & (sensitivty > test_sen):
+                save_ckpt(net, epoch + 1 + 8888888)
+                accuracy = test_acc
+                sensitivty = test_sen
 
 
 def model_eval(net):
+    raise RuntimeError("model_eval should not be called")
     print("Start testing model...")
     test_data = Data(args['data_path'], train=False)
     batchs_data = DataLoader(test_data, batch_size=1)
@@ -233,8 +230,8 @@ def model_eval(net):
     Acc, Sen = [], []
     file_num = 0
     for idx, batch in enumerate(batchs_data):
-        image = batch[0].float().cuda()
-        label = batch[1].float().cuda()
+        image = batch[0].float().to(device)
+        label = batch[1].float().to(device)
         pred_val = net(image)
         acc, sen = metrics(pred_val, label, pred_val.shape[0])
         print("\t---\t test acc:{0:.4f}    test sen:{1:.4f}".format(acc, sen))
