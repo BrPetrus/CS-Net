@@ -10,7 +10,7 @@ from torchsummary import summary
 import visdom
 import numpy as np
 from model.csnet import CSNet
-from dataloader.drive import Data
+from dataloader.stare import Data
 from utils.train_metrics import metrics
 from utils.visualize import init_visdom_line, update_lines
 from utils.dice_loss_single_class import dice_coeff_loss
@@ -19,8 +19,8 @@ from utils.dice_loss_single_class import dice_coeff_loss
 
 args = {
     'root'      : '/home/xpetrus/DP/CS-Net',
-    'data_path' : '/home/xpetrus/DP/Datasets/External/DRIVE',
-    'epochs'    : 100000,
+    'data_path' : '/home/xpetrus/DP/Datasets/External/STARE',
+    'epochs'    : 10000,
     'lr'        : 0.0001,
     'snapshot'  : 100,
     'test_step' : 1,

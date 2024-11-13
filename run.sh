@@ -1,9 +1,9 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=3
 echo "Current CUDA setting ${CUDA_VISIBLE_DEVICES}\n"
 
-TIME=$((8* 3600))
+TIME=$((1*3600))
 echo "Setting time to $(($TIME / 3600)) hours"
 ulimit -t $TIME
 
