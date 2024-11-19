@@ -20,12 +20,12 @@ from utils.dice_loss_single_class import dice_coeff_loss
 args = {
     'root'      : '/home/xpetrus/DP/CS-Net',
     'data_path' : '/home/xpetrus/DP/Datasets/External/STARE',
-    'epochs'    : 10000,
+    'epochs'    : 1000,
     'lr'        : 0.0001,
     'snapshot'  : 100,
     'test_step' : 1,
     'ckpt_path' : 'checkpoint/',
-    'batch_size': 8,
+    'batch_size': 4,
 }
 
 # # Visdom---------------------------------------------------------
@@ -70,9 +70,9 @@ def train():
     iters = 1
     accuracy = 0.
     sensitivty = 0.
+    net.train()
     for epoch in range(args['epochs']):
         print(f"Epoch {epoch}/{len(range(args['epochs']))}")
-        net.train()
         for idx, batch in enumerate(batchs_data):
             image = batch[0].cuda()
             label = batch[1].cuda()

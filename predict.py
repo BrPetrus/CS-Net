@@ -10,8 +10,9 @@ import glob
 from utils.misc import thresh_OTSU, ReScaleSize, Crop
 #from utils.model_eval import eval
 
-DATABASE = '/home/xpetrus/DP/Datasets/External/DRIVE/'
+#DATABASE = '/home/xpetrus/DP/Datasets/External/DRIVE/'
 #
+DATABASE = '/home/xpetrus/DP/Datasets/External/STARE/'
 args = {
     #'root'     : './dataset/' + DATABASE,
     #'test_path': './dataset/' + DATABASE + 'test/',
@@ -92,10 +93,12 @@ def load_drive():
 def load_stare():
     test_images = []
     test_labels = []
+    print(f"[STARE] looking for images in {args['test_path']}")
     for file in glob.glob(os.path.join(args['test_path'], 'images', '*.ppm')):
         basename = os.path.basename(file)
         file_name = basename[:-4]
         image_name = os.path.join(args['test_path'], 'images', basename)
+        print(f"Loading {image_name}")
         label_name = os.path.join(args['test_path'], 'labels-ah', file_name + '.ah.ppm')
         test_images.append(image_name)
         test_labels.append(label_name)
@@ -129,9 +132,12 @@ def load_octa():
 
 
 def load_net():
-    #net = torch.load('./checkpoint/xxxx.pkl')
+    #net = torch.load('./checkpoint/xxxx.pkl'):w
     torch.serialization.add_safe_globals('torch.nn.parallel.data_parallel.DataParallel')
-    net = torch.load('./checkpoint/CS_Net_DRIVE_9900.pkl', weights_only=False)
+    #net_drive = torch.load('./checkpoint/CS_Net_DRIVE_9900.pkl', weights_only=False)
+    net_stare = torch.load('./checkpoint_STARE_2024-11-14/CS_Net_DRIVE_1200.pkl', weights_only=False)
+
+    net = net_stare
     return net
 
 
@@ -151,8 +157,8 @@ def save_prediction(pred, filename=''):
 def predict():
     net = load_net()
     # images, labels = load_nerve()
-    images, labels = load_drive()
-    # images, labels = load_stare()
+    # images, labels = load_drive()
+    images, labels = load_stare()
     # images, labels = load_padova1()
     # images, labels = load_octa()
 
@@ -177,11 +183,11 @@ def predict():
             # for other retinal vessel
             # image = rescale(image)
             # label = rescale(label)
-            # image = ReScaleSize_STARE(image, re_size=args['img_size'])
-            # label = ReScaleSize_DRIVE(label, re_size=args['img_size'])
+            image = ReScaleSize_STARE(image, re_size=args['img_size'])
+            label = ReScaleSize_STARE(label, re_size=args['img_size'])
 
-            image = ReScaleSize_DRIVE(image, re_size=args['img_size'])
-            label = ReScaleSize_DRIVE(label, re_size=args['img_size'])
+            #image = ReScaleSize_DRIVE(image, re_size=args['img_size'])
+            #label = ReScaleSize_DRIVE(label, re_size=args['img_size'])
 
             # for OCTA
             # image = Crop(image)
