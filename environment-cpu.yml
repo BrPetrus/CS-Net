@@ -3,7 +3,7 @@ channels:
   - pytorch
   - conda-forge
 dependencies:
-  - python=3.10
+  - python=3.12
   - vtk
   - tqdm
   - visdom
@@ -24,4 +24,5 @@ dependencies:
     - visdom==0.2.4
     - SimpleITK
     - typing_extensions
+    - torch-summary
 

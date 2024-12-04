@@ -18,8 +18,8 @@ from utils.dice_loss_single_class import dice_coeff_loss
 from sklearn.model_selection import KFold
 
 args = {
-    'root'      : '/home/xpetrus/DP/CS-Net',
-    'data_path' : '/home/xpetrus/DP/Datasets/External/STARE',
+    'root'      : '/home/bruno/DP/CS-Net',
+    'data_path' : '/home/bruno/DP/STARE',
     'epochs'    : 2000,
     'lr'        : 0.0001,
     'snapshot'  : 100,
@@ -58,6 +58,15 @@ def adjust_lr(optimizer, base_lr, iter, max_iter, power=0.9):
 
 
 def train_with_kfodl():
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
+
+
     k_folds = 4
     kf = KFold(n_splits=k_folds, shuffle=True)
     
@@ -66,9 +75,7 @@ def train_with_kfodl():
     #net = nn.DataParallel(net).cuda()
     
     nets = []
-
-
-    criterion = nn.MSELoss().cuda()
+    criterion = nn.MSELoss().to(device)
 
 
     print("---------------start training- with K Fold-----------------")
@@ -84,7 +91,7 @@ def train_with_kfodl():
 
         # Create the nets
         # TODO: reuse the same memory
-        net = CSNet(classes=1, channels=3).cuda()
+        net = CSNet(classes=1, channels=3).to(device)
         optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
         #net = nn.DataParallel(net).cuda()
         
@@ -105,8 +112,8 @@ def train_with_kfodl():
         for epoch in range(args['epochs']):
             print(f"Epoch {epoch + 1}/{args['epochs']}")
             for idx, batch in enumerate(train_loader):
-                image = batch[0].cuda()
-                label = batch[1].cuda()
+                image = batch[0].to(device)
+                label = batch[1].to(device)
                 
                 # Zero gradients
                 optimizer.zero_grad()
@@ -150,74 +157,74 @@ def train_with_kfodl():
     
 
 
-def train():
-    device = (
-        "cuda"
-        if torch.cuda.is_available()
-        else "mps"
-        if torch.backends.mps.is_available()
-        else "cpu"
-    )
-    print(f"Using {device} device")
+# def train():
+#     device = (
+#         "cuda"
+#         if torch.cuda.is_available()
+#         else "mps"
+#         if torch.backends.mps.is_available()
+#         else "cpu"
+#     )
+#     print(f"Using {device} device")
 
-    # set the channels to 3 when the format is RGB, otherwise 1.
-    net = CSNet(classes=1, channels=3).to(device)
-    net = nn.DataParallel(net).to(device)
-    optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
-    critrion = nn.MSELoss().to(device)
-    # critrion = nn.CrossEntropyLoss().cuda()
-    print("---------------start training------------------")
-    # load train dataset
-    train_data = Data(args['data_path'], train=True)
-    # TODO: num_workers ~> args
-    batchs_data = DataLoader(train_data, batch_size=args['batch_size'], num_workers=2, shuffle=True)
+#     # set the channels to 3 when the format is RGB, otherwise 1.
+#     net = CSNet(classes=1, channels=3).to(device)
+#     net = nn.DataParallel(net).to(device)
+#     optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
+#     critrion = nn.MSELoss().to(device)
+#     # critrion = nn.CrossEntropyLoss().cuda()
+#     print("---------------start training------------------")
+#     # load train dataset
+#     train_data = Data(args['data_path'], train=True)
+#     # TODO: num_workers ~> args
+#     batchs_data = DataLoader(train_data, batch_size=args['batch_size'], num_workers=2, shuffle=True)
 
-    iters = 1
-    accuracy = 0.
-    sensitivty = 0.
-    net.train()
-    for epoch in range(args['epochs']):
-        print(f"Epoch {epoch}/{len(range(args['epochs']))}")
-        for idx, batch in enumerate(batchs_data):
-            image = batch[0].to(device)
-            label = batch[1].to(device)
-            optimizer.zero_grad()
-            pred = net(image)
-            pred = pred.squeeze_(1)
-            loss1 = critrion(pred, label)
-            loss1.backward()
-            loss2 = dice_coeff_loss(pred, label)
-            loss = loss1 + loss2
-            loss.backward()
+#     iters = 1
+#     accuracy = 0.
+#     sensitivty = 0.
+#     net.train()
+#     for epoch in range(args['epochs']):
+#         print(f"Epoch {epoch}/{len(range(args['epochs']))}")
+#         for idx, batch in enumerate(batchs_data):
+#             image = batch[0].to(device)
+#             label = batch[1].to(device)
+#             optimizer.zero_grad()
+#             pred = net(image)
+#             pred = pred.squeeze_(1)
+#             loss1 = critrion(pred, label)
+#             loss1.backward()
+#             loss2 = dice_coeff_loss(pred, label)
+#             loss = loss1 + loss2
+#             loss.backward()
             
-            optimizer.step()
-            acc, sen = metrics(pred, label, pred.shape[0])
-            print('[{0:d}:{1:d}] --- loss:{2:.10f}\tacc:{3:.4f}\tsen:{4:.4f}'.format(epoch + 1,
-                                                                                     iters, loss.item(),
-                                                                                     acc / pred.shape[0],
-                                                                                     sen / pred.shape[0]))
-            iters += 1
-            # # ---------------------------------- visdom --------------------------------------------------
-            X, x_acc, x_sen = iters, iters, iters
-            Y, y_acc, y_sen = loss.item(), acc / pred.shape[0], sen / pred.shape[0]
-            update_lines(env, panel, X, Y)
-            update_lines(env1, panel1, x_acc, y_acc)
-            update_lines(env2, panel2, x_sen, y_sen)
-            # # --------------------------------------------------------------------------------------------
+#             optimizer.step()
+#             acc, sen = metrics(pred, label, pred.shape[0])
+#             print('[{0:d}:{1:d}] --- loss:{2:.10f}\tacc:{3:.4f}\tsen:{4:.4f}'.format(epoch + 1,
+#                                                                                      iters, loss.item(),
+#                                                                                      acc / pred.shape[0],
+#                                                                                      sen / pred.shape[0]))
+#             iters += 1
+#             # # ---------------------------------- visdom --------------------------------------------------
+#             X, x_acc, x_sen = iters, iters, iters
+#             Y, y_acc, y_sen = loss.item(), acc / pred.shape[0], sen / pred.shape[0]
+#             update_lines(env, panel, X, Y)
+#             update_lines(env1, panel1, x_acc, y_acc)
+#             update_lines(env2, panel2, x_sen, y_sen)
+#             # # --------------------------------------------------------------------------------------------
 
-        adjust_lr(optimizer, base_lr=args['lr'], iter=epoch, max_iter=args['epochs'], power=0.9)
-        if (epoch + 1) % args['snapshot'] == 0:
-            save_ckpt(net, epoch + 1)
+#         adjust_lr(optimizer, base_lr=args['lr'], iter=epoch, max_iter=args['epochs'], power=0.9)
+#         if (epoch + 1) % args['snapshot'] == 0:
+#             save_ckpt(net, epoch + 1)
 
-        # model eval
-        if (epoch + 1) % args['test_step'] == 0:
-            test_acc, test_sen = model_eval(net)
-            print("Average acc:{0:.4f}, average sen:{1:.4f}".format(test_acc, test_sen))
+#         # model eval
+#         if (epoch + 1) % args['test_step'] == 0:
+#             test_acc, test_sen = model_eval(net)
+#             print("Average acc:{0:.4f}, average sen:{1:.4f}".format(test_acc, test_sen))
 
-            if (accuracy > test_acc) & (sensitivty > test_sen):
-                save_ckpt(net, epoch + 1 + 8888888)
-                accuracy = test_acc
-                sensitivty = test_sen
+#             if (accuracy > test_acc) & (sensitivty > test_sen):
+#                 save_ckpt(net, epoch + 1 + 8888888)
+#                 accuracy = test_acc
+#                 sensitivty = test_sen
 
 
 def model_eval(net):
