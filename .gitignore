@@ -1,2 +1,8 @@
 
 .DS_Store
+
+predictions*
+checkpoint*
+
+__pycache__
+*.swp

@@ -41,7 +41,7 @@ class ResEncoder(nn.Module):
         residual = self.conv1x1(x)
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.relu(self.bn2(self.conv2(out)))
-        out += residual
+        out = residual + out
         out = self.relu(out)
         return out
 
@@ -52,10 +52,10 @@ class Decoder(nn.Module):
         self.conv = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
                 nn.BatchNorm2d(out_channels),
-                nn.ReLU(inplace=True),
+                nn.ReLU(inplace=False),
                 nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
                 nn.BatchNorm2d(out_channels),
-                nn.ReLU(inplace=True)
+                nn.ReLU(inplace=False)
         )
 
     def forward(self, x):
@@ -69,12 +69,12 @@ class SpatialAttentionBlock(nn.Module):
         self.query = nn.Sequential(
             nn.Conv2d(in_channels,in_channels//8,kernel_size=(1,3), padding=(0,1)),
             nn.BatchNorm2d(in_channels//8),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=False)
         )
         self.key = nn.Sequential(
             nn.Conv2d(in_channels, in_channels//8, kernel_size=(3,1), padding=(1,0)),
             nn.BatchNorm2d(in_channels//8),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=False)
         )
         self.value = nn.Conv2d(in_channels, in_channels, kernel_size=1)
         self.gamma = nn.Parameter(torch.zeros(1))
@@ -188,8 +188,9 @@ class CSNet(nn.Module):
         # Do Attenttion operations here
         attention = self.affinity_attention(input_feature)
 
-        # attention_fuse = self.attention_fuse(torch.cat((input_feature, attention), dim=1))
+        #attention_fuse = self.attention_fuse(torch.cat((input_feature, attention), dim=1))
         attention_fuse = input_feature + attention
+        # TODO: Try to set attention to 0 for debuggin purposes.
 
         # Do decoder operations here
         up4 = self.deconv4(attention_fuse)

@@ -41,10 +41,13 @@ class DiceCoeff(Function):
 
 def dice_coeff(input, target):
     """Dice coeff for batches"""
+    # TODO: What's the point of the inplace zero ops?
     if input.is_cuda:
         s = torch.FloatTensor(1).cuda().zero_()
+        #s = torch.FloatTensor(1).cuda().zero()
     else:
         s = torch.FloatTensor(1).zero_()
+        #s = torch.FloatTensor(1).zero()
 
     # print("size of input, target:", input.shape, target.shape)
 
