@@ -44,7 +44,7 @@ class Data(Dataset):
 
         # Setup paths
         if self.train:
-            data_path = root_path / 'train'
+            data_path = root_path / 'training'
         else:
             data_path = root_path / 'test'
 
@@ -57,29 +57,48 @@ class Data(Dataset):
 
             # Load the images
             img = self._load_stack(str(input_image_path)).astype(np.float32)
-            gt = self._load_stack(str(groundtruth_path)).astype(np.int64)
+            gt_raw = self._load_stack(str(groundtruth_path)).astype(np.int64)
+            gt = np.zeros_like(gt_raw)
+            gt[gt_raw > 128] = 255
+            
+
+            # Transpose
+            img = img.transpose(2, 0, 1)  # [x, y, z] -> [z, x, y]
+            gt = gt.transpose(2, 0, 1)
+
+            # Cut to replicate MRA Brain Loader
+            # TODO stufy more
+            # img = img[:64, :104, :112]
+            # gt = gt[:64, :104, :112]
+            # img = img[:100, :100, :100]
+            # gt = gt[:100, :100, :100]
+            img = img[:64, :64, :64]
+            gt = gt[:64, :64, :64]
+
+
+            # Expand dimensions
+            img = torch.from_numpy(np.ascontiguousarray(img)).unsqueeze(0)
+            gt = torch.from_numpy(np.ascontiguousarray(gt)).unsqueeze(0)
 
             # Normalize
             img = img / 255.0
             gt = gt // 255
 
-            # Transpose
-            img = img.transpose(1, 2, 0)  # HWC
-            gt = gt.transpose(1, 2, 0)
-
             images.append(img)
             groundtruth.append(gt)
 
-
-        self.images.append(np.array(images))
-        self.groundtruth.append(np.array(groundtruth))
+        # self.images = np.array(images)
+        # self.groundtruth = np.array(groundtruth)
+        self.images = images
+        self.groundtruth = groundtruth
         print(f"Loaded {len(images)} images and {len(groundtruth)} groundtruth images")
 
     def __len__(self):
         return len(self.images)
     
-    def __get_item__(self, idx) -> Optional[Tuple[NDArray[np.float32], NDArray[np.int64]]]:
+    def __getitem__(self, idx) -> Optional[Tuple[NDArray[np.float32], NDArray[np.int64]]]:
         if idx >= len(self.images):
             return None
+        # return self.images[idx], self.groundtruth[idx]
         return self.images[idx], self.groundtruth[idx]
 
