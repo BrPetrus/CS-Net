@@ -14,20 +14,21 @@ import datetime
 import numpy as np
 
 from model.csnet_3d import CSNet3D
-from dataloader.MRABrainLoader import Data
+# from dataloader.MRABrainLoader import Data
+from dataloader.VascuSynthLoader import Data
 
 from utils.train_metrics import metrics3d
 from utils.losses import WeightedCrossEntropyLoss, DiceLoss
 from utils.visualize import init_visdom_line, update_lines
 
 args = {
-    'root'      : '/home/user/name/Projects/',
-    'data_path' : 'dataset/data dir(your own data path)/',
-    'epochs'    : 200,
+    'root'      : '/home/xpetrus/DP/CS-Net',
+    'data_path' : '/home/xpetrus/DP/Datasets/External/VascuSynthMine02',
+    'epochs'    : 5,
     'lr'        : 0.0001,
     'snapshot'  : 100,
-    'test_step' : 1,
-    'ckpt_path' : './checkpoint/',
+    'test_step' : 5,
+    'ckpt_path' : './checkpoint3D/',
     'batch_size': 2,
 }
 
@@ -63,15 +64,21 @@ def adjust_lr(optimizer, base_lr, iter, max_iter, power=0.9):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
+import torchsummary
+import tifffile as tiff
+import matplotlib.pyplot as plt
 
 def train():
     net = CSNet3D(classes=2, channels=1).cuda()
-    net = nn.DataParallel(net, device_ids=[0, 1]).cuda()
+    net = nn.DataParallel(net, device_ids=[0]).cuda()
     optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
+
+    torchsummary.summary(net, (1, 64, 64, 64))
+    # return
 
     # load train dataset
     train_data = Data(args['data_path'], train=True)
-    batchs_data = DataLoader(train_data, batch_size=args['batch_size'], num_workers=4, shuffle=True)
+    batchs_data = DataLoader(train_data, batch_size=args['batch_size'], num_workers=1, shuffle=True)
 
     critrion2 = WeightedCrossEntropyLoss().cuda()
     critrion = nn.CrossEntropyLoss().cuda()
@@ -130,7 +137,40 @@ def train():
             test_tp, test_fn, test_fp, test_dc = model_eval(net, critrion, iters)
             print("Average TP:{0:.4f}, average FN:{1:.4f},  average FP:{2:.4f}".format(test_tp, test_fn, test_fp))
 
+    # Save the final model
+    save_ckpt(net, 'final')
 
+    # Evaluate the model on the test data
+    test_tp, test_fn, test_fp, test_dc = model_eval(net, critrion, iters)
+    print("Final evaluation - Average TP:{0:.4f}, average FN:{1:.4f},  average FP:{2:.4f}, average IoU:{3:.4f}".format(test_tp, test_fn, test_fp, test_dc))
+
+    # Save the test results
+    test_data = Data(args['data_path'], train=False)
+    batchs_data = DataLoader(test_data, batch_size=1)
+    net.eval()
+    with torch.no_grad():
+        for idx, batch in enumerate(batchs_data):
+            image = batch[0].float().cuda()
+            label = batch[1].cuda()
+            pred_val = net(image)
+            label = label.squeeze(1)
+
+            # Save the images
+            fig, ax = plt.subplots(3, 1)
+            ax[0].imshow(image[0, 0, :, :, 32].cpu().numpy())
+            ax[1].imshow(pred_val[0, 1, :, :, 32].cpu().numpy())
+            ax[2].imshow(label[0, :, :, 32].cpu().numpy())
+            fig.savefig(f'./results/result_{idx}.png')
+            plt.close(fig)
+            # Save the whole stack of images as TIFF files
+
+            image_stack = image[0, 0].cpu().numpy()
+            pred_stack = pred_val[0, 1].cpu().numpy()
+            label_stack = label[0].cpu().numpy() * 255
+
+            tiff.imwrite(f'./results/image_stack_{idx}.tiff', image_stack)
+            tiff.imwrite(f'./results/pred_stack_{idx}.tiff', pred_stack)
+            tiff.imwrite(f'./results/label_stack_{idx}.tiff', label_stack)
 def model_eval(net, critrion, iters):
     print("\033[1;30;43m {} Start training ... {}\033[0m".format("*" * 8, "*" * 8))
     test_data = Data(args['data_path'], train=False)
@@ -145,6 +185,14 @@ def model_eval(net, critrion, iters):
             label = batch[1].cuda()
             pred_val = net(image)
             label = label.squeeze(1)
+
+            fig, ax = plt.subplots(3, 1)
+            ax[0].imshow(image[0, 0, :, :, 32].cpu().numpy())
+            ax[1].imshow(pred_val[0, 1, :, :, 32].cpu().numpy())
+            ax[2].imshow(label[0, :, :, 32].cpu().numpy())
+            fig.savefig(f'./results/result.png')
+            plt.show()
+
             loss = critrion(pred_val, label)
             tp, fn, fp, iou = metrics3d(pred_val, label, pred_val.shape[0])
             print(
@@ -163,5 +211,7 @@ def model_eval(net, critrion, iters):
             return np.mean(TP), np.mean(FN), np.mean(FP), np.mean(IoU)
 
 
+
+
 if __name__ == '__main__':
-    train()
+    train() 
