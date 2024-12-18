@@ -36,33 +36,15 @@ args = {
     # 'data_path' : '/home/xpetrus/DP/Datasets/External/VascuSynthMine02',
     'root'      : '/home/bruno/DP/CS-Net',
     'data_path' : '/home/bruno/DP/VascuSynth/dataset',
-    'epochs'    : 20,
+    'epochs'    : 1,
     'lr'        : 0.001,
     'snapshot'  : 100,
     'valid_step' : 5,
     'ckpt_path' : './checkpoint3D/',
     'batch_size': 1,
     'k_folds'   : 2,
-    # 'weight_decay': 0.0005,
     'learning_rate_decay': 0.9,
 }
-
-# # # Visdom---------------------------------------------------------
-# # The initial values are defined by myself
-# X, Y = 0, 1.0  # for visdom
-# x_tp, y_tp = 0, 0
-# x_fn, y_fn = 0.4, 0.4
-# x_fp, y_fp = 0.4, 0.4
-# x_testtp, y_testtp = 0.0, 0.0
-# x_testdc, y_testdc = 0.0, 0.0
-# env, panel = init_visdom_line(X, Y, title='Train Loss', xlabel="iters", ylabel="loss", env="wce")
-# env1, panel1 = init_visdom_line(x_tp, y_tp, title="TPR", xlabel="iters", ylabel="TPR", env="wce")
-# env2, panel2 = init_visdom_line(x_fn, y_fn, title="FNR", xlabel="iters", ylabel="FNR", env="wce")
-# env3, panel3 = init_visdom_line(x_fp, y_fp, title="FPR", xlabel="iters", ylabel="FPR", env="wce")
-# env6, panel6 = init_visdom_line(x_testtp, y_testtp, title="DSC", xlabel="iters", ylabel="DSC", env="wce")
-# env4, panel4 = init_visdom_line(x_testtp, y_testtp, title="Test Loss", xlabel="iters", ylabel="Test Loss", env="wce")
-# env5, panel5 = init_visdom_line(x_testdc, y_testdc, title="Test TP", xlabel="iters", ylabel="Test TP", env="wce")
-# env7, panel7 = init_visdom_line(x_testdc, y_testdc, title="Test IoU", xlabel="iters", ylabel="Test IoU", env="wce")
 
 
 def save_ckpt(net, iter):
@@ -81,14 +63,13 @@ def adjust_lr(optimizer, base_lr: float, iter: int, max_iter: int, power: float 
 
 
 
-def train_with_kfold() -> List[nn.Module]:
+def train_with_kfold(device) -> List[nn.Module]:
     """
     Train the CSNet3D model using K-Fold cross-validation.
 
     Returns:
         List[nn.Module]: List of trained models for each fold.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     k_folds = args['k_folds']
     kf = KFold(n_splits=k_folds, shuffle=True)
@@ -195,10 +176,13 @@ def train_with_kfold() -> List[nn.Module]:
     return nets
 
 
-def model_eval(net, criterion, iters, device):
+def model_eval(net, criterion, iters, device, output_dir: str):
     print("\033[1;30;43m {} Model evaluation ... {}\033[0m".format("*" * 8, "*" * 8))
-    test_data = Data(args['data_path'], train=False, shuffle=False)
+    test_data = Data(args['data_path'], train=False)
     batchs_data = DataLoader(test_data, batch_size=1)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
 
     TP, FN, FP, IoU = [], [], [], []
     file_num = 0
@@ -214,7 +198,7 @@ def model_eval(net, criterion, iters, device):
             ax[0].imshow(image[0, 0, :, :, 32].cpu().numpy())
             ax[1].imshow(pred_val[0, 1, :, :, 32].cpu().numpy())
             ax[2].imshow(label[0, :, :, 32].cpu().numpy())
-            fig.savefig(f'./results/result.png')
+            fig.savefig(os.path.join(output_dir, f'result_{idx}.png'))
             plt.show()
 
             # Now save the whole stacks
@@ -222,10 +206,9 @@ def model_eval(net, criterion, iters, device):
             pred_stack = pred_val[0, 1].cpu().numpy()
             label_stack = label[0].cpu().numpy() * 255
 
-            tiff.imwrite(f'./results/image_stack_{idx}.tiff', image_stack)
-            tiff.imwrite(f'./results/pred_stack_{idx}.tiff', pred_stack)
-            tiff.imwrite(f'./results/label_stack_{idx}.tiff', label_stack)
-            
+            tiff.imwrite(os.path.join(output_dir, f'image_stack_{idx}.tiff'), image_stack)
+            tiff.imwrite(os.path.join(output_dir, f'pred_stack_{idx}.tiff'), pred_stack)
+            tiff.imwrite(os.path.join(output_dir, f'label_stack_{idx}.tiff'), label_stack)
 
             loss = criterion(pred_val, label)
             tp, fn, fp, iou = metrics3d(pred_val, label, pred_val.shape[0])
@@ -242,4 +225,14 @@ def model_eval(net, criterion, iters, device):
 
 
 if __name__ == '__main__':
-    train_with_kfold() 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    nets = train_with_kfold(device=device) 
+
+    # Evaluate the model
+    for i, net in enumerate(nets):
+        print(f"Model {i}")
+        tp, fn, fp, iou = model_eval(net, nn.CrossEntropyLoss(), i, device, f'./result/net-{i}')
+        print(f"TP: {tp} FN: {fn} FP: {fp} IoU: {iou}")
+
+

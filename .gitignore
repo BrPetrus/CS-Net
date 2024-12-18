@@ -1,6 +1,7 @@
 predictions*
 checkpoint*
 results
+result
 
 .vscode
 .DS_Store

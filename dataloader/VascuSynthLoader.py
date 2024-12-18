@@ -15,19 +15,15 @@ import skimage.io as skio
 class Data(Dataset):
     def __init__(self,
                  root_dir: str,
-                 train=True,
-                 scale=512):
+                 train=True):
         self.root_dir = root_dir
         self.train = train
-        self.scale = scale
         self.images = []
         self.groundtruth = []
         self._load_dataset()
     
     def _load_stack(self, dir_path: str) -> NDArray:
         stack = []
-        # for file in glob.glob(str(Path(dir_path) / '*.jpg')):
-        #     stack.append(skio.imread(file))
         for file in sorted(os.listdir(dir_path)):
             stack.append(skio.imread(str(Path(dir_path) / file )))
 
@@ -54,38 +50,38 @@ class Data(Dataset):
 
             if not input_image_path.exists() or not groundtruth_path.exists():
                 print(f"Skipping {input_image_path} and {groundtruth_path}")
+                continue
 
             # Load the images
             img = self._load_stack(str(input_image_path)).astype(np.float32)
             gt_raw = self._load_stack(str(groundtruth_path)).astype(np.int64)
             gt = np.zeros_like(gt_raw)
             gt[gt_raw > 128] = 255
-            
 
             # Transpose
             img = img.transpose(2, 0, 1)  # [x, y, z] -> [z, x, y]
             gt = gt.transpose(2, 0, 1)
 
-            # Cut to replicate MRA Brain Loader
-            # TODO stufy more
-            # img = img[:64, :104, :112]
-            # gt = gt[:64, :104, :112]
-            # img = img[:100, :100, :100]
-            # gt = gt[:100, :100, :100]
-            img = img[:64, :64, :64]
-            gt = gt[:64, :64, :64]
+            # Cut into 64x64x64 chunks
+            z, x, y = img.shape
+            for i in range(0, z, 64):
+                for j in range(0, x, 64):
+                    for k in range(0, y, 64):
+                        img_chunk = img[i:i+64, j:j+64, k:k+64]
+                        gt_chunk = gt[i:i+64, j:j+64, k:k+64]
 
+                        # Ensure the chunk is 64x64x64
+                        if img_chunk.shape == (64, 64, 64) and gt_chunk.shape == (64, 64, 64):
+                            # Expand dimensions
+                            img_chunk = torch.from_numpy(np.ascontiguousarray(img_chunk)).unsqueeze(0)
+                            gt_chunk = torch.from_numpy(np.ascontiguousarray(gt_chunk)).unsqueeze(0)
 
-            # Expand dimensions
-            img = torch.from_numpy(np.ascontiguousarray(img)).unsqueeze(0)
-            gt = torch.from_numpy(np.ascontiguousarray(gt)).unsqueeze(0)
+                            # Normalize
+                            img_chunk = img_chunk / 255.0
+                            gt_chunk = gt_chunk // 255
 
-            # Normalize
-            img = img / 255.0
-            gt = gt // 255
-
-            images.append(img)
-            groundtruth.append(gt)
+                            images.append(img_chunk)
+                            groundtruth.append(gt_chunk)
 
         # self.images = np.array(images)
         # self.groundtruth = np.array(groundtruth)
