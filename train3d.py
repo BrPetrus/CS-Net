@@ -32,37 +32,20 @@ from sklearn.model_selection import KFold
 from typing import List
 
 args = {
-    # 'root'      : '/home/xpetrus/DP/CS-Net',
-    # 'data_path' : '/home/xpetrus/DP/Datasets/External/VascuSynthMine02',
-    'root'      : '/home/bruno/DP/CS-Net',
-    'data_path' : '/home/bruno/DP/VascuSynth/dataset',
-    'epochs'    : 20,
+    'root'      : '/home/xpetrus/DP/CS-Net',
+    'data_path' : '/home/xpetrus/DP/Datasets/External/VascuSynthMine02',
+    # 'root'      : '/home/bruno/DP/CS-Net',
+    # 'data_path' : '/home/bruno/DP/VascuSynth/dataset',
+    'epochs'    : 100,
     'lr'        : 0.001,
     'snapshot'  : 100,
     'valid_step' : 5,
     'ckpt_path' : './checkpoint3D/',
-    'batch_size': 1,
+    'batch_size': 4,
     'k_folds'   : 2,
     # 'weight_decay': 0.0005,
     'learning_rate_decay': 0.9,
 }
-
-# # # Visdom---------------------------------------------------------
-# # The initial values are defined by myself
-# X, Y = 0, 1.0  # for visdom
-# x_tp, y_tp = 0, 0
-# x_fn, y_fn = 0.4, 0.4
-# x_fp, y_fp = 0.4, 0.4
-# x_testtp, y_testtp = 0.0, 0.0
-# x_testdc, y_testdc = 0.0, 0.0
-# env, panel = init_visdom_line(X, Y, title='Train Loss', xlabel="iters", ylabel="loss", env="wce")
-# env1, panel1 = init_visdom_line(x_tp, y_tp, title="TPR", xlabel="iters", ylabel="TPR", env="wce")
-# env2, panel2 = init_visdom_line(x_fn, y_fn, title="FNR", xlabel="iters", ylabel="FNR", env="wce")
-# env3, panel3 = init_visdom_line(x_fp, y_fp, title="FPR", xlabel="iters", ylabel="FPR", env="wce")
-# env6, panel6 = init_visdom_line(x_testtp, y_testtp, title="DSC", xlabel="iters", ylabel="DSC", env="wce")
-# env4, panel4 = init_visdom_line(x_testtp, y_testtp, title="Test Loss", xlabel="iters", ylabel="Test Loss", env="wce")
-# env5, panel5 = init_visdom_line(x_testdc, y_testdc, title="Test TP", xlabel="iters", ylabel="Test TP", env="wce")
-# env7, panel7 = init_visdom_line(x_testdc, y_testdc, title="Test IoU", xlabel="iters", ylabel="Test IoU", env="wce")
 
 
 def save_ckpt(net, iter):
@@ -195,16 +178,21 @@ def train_with_kfold() -> List[nn.Module]:
     return nets
 
 
-def model_eval(net, criterion, iters, device):
+def predict(net, device, output_dir):
     print("\033[1;30;43m {} Model evaluation ... {}\033[0m".format("*" * 8, "*" * 8))
-    test_data = Data(args['data_path'], train=False, shuffle=False)
+    test_data = Data(args['data_path'], train=False)
     batchs_data = DataLoader(test_data, batch_size=1)
+    # path = os.path.join(output_dir, 'results')
+    # os.makedirs(path)
 
     TP, FN, FP, IoU = [], [], [], []
     file_num = 0
     net.eval()
     with torch.no_grad():
         for idx, batch in enumerate(batchs_data):
+            path = os.path.join(output_dir, f'idx-{idx}')
+            os.makedirs(path)
+
             image = batch[0].float().to(device)
             label = batch[1].to(device)
             pred_val = net(image)
@@ -214,7 +202,7 @@ def model_eval(net, criterion, iters, device):
             ax[0].imshow(image[0, 0, :, :, 32].cpu().numpy())
             ax[1].imshow(pred_val[0, 1, :, :, 32].cpu().numpy())
             ax[2].imshow(label[0, :, :, 32].cpu().numpy())
-            fig.savefig(f'./results/result.png')
+            fig.savefig(os.path.join(path, 'result.png'))
             plt.show()
 
             # Now save the whole stacks
@@ -222,12 +210,12 @@ def model_eval(net, criterion, iters, device):
             pred_stack = pred_val[0, 1].cpu().numpy()
             label_stack = label[0].cpu().numpy() * 255
 
-            tiff.imwrite(f'./results/image_stack_{idx}.tiff', image_stack)
-            tiff.imwrite(f'./results/pred_stack_{idx}.tiff', pred_stack)
-            tiff.imwrite(f'./results/label_stack_{idx}.tiff', label_stack)
+            tiff.imwrite(os.path.join(path, f'image_stack_{idx}.tiff'), image_stack)
+            tiff.imwrite(os.path.join(path, f'pred_stack_{idx}.tiff'), pred_stack)
+            tiff.imwrite(os.path.join(path, f'label_stack_{idx}.tiff'), label_stack)
             
 
-            loss = criterion(pred_val, label)
+            # loss = criterion(pred_val, label)
             tp, fn, fp, iou = metrics3d(pred_val, label, pred_val.shape[0])
             print(
                 "--- test TP:{0:.4f}    test FN:{1:.4f}    test FP:{2:.4f}    test IoU:{3:.4f}".format(tp, fn, fp, iou))
@@ -242,4 +230,8 @@ def model_eval(net, criterion, iters, device):
 
 
 if __name__ == '__main__':
-    train_with_kfold() 
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    nets = train_with_kfold() 
+    for k_fold_idx, net in enumerate(nets):
+        output_dir = os.path.join('.', current_time, f'{k_fold_idx}-fold')
+        predict(net, 'cuda', output_dir)
