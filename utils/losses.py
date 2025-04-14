@@ -68,15 +68,16 @@ class DiceLoss(nn.Module):
         same as BinaryDiceLoss
     """
 
-    def __init__(self, weight=None, ignore_index=None, **kwargs):
+    def __init__(self, device, weight=None, ignore_index=None, **kwargs):
         super(DiceLoss, self).__init__()
         self.kwargs = kwargs
         self.weight = weight
         self.ignore_index = ignore_index
+        self.device = device
 
     def forward(self, predict, target):
         target = make_one_hot(target, num_classes=predict.shape[1])
-        target = target.cuda()
+        target = target.to(self.device)  # TODO: review
         assert predict.shape == target.shape, 'predict & target shape do not match'
         dice = BinaryDiceLoss(**self.kwargs)
         total_loss = 0

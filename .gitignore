@@ -1,2 +1,12 @@
+predictions*
+checkpoint*
+results
 
+.vscode
 .DS_Store
+__pycache__
+*.swp
+
+*.tiff
+*.tif
+*.png

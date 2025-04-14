@@ -1,0 +1,28 @@
+name: cs2
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - vtk
+  - tqdm
+  - visdom
+  - opencv
+  - scikit-learn
+  - pytorch==2.5.0
+  - torchvision==0.20.0
+  - torchaudio==2.5.0
+  - pytorch-cuda=12.4
+  - pip
+  - scikit-image
+  - spyder
+  - sympy
+  - cython
+  - pandas
+  - matplotlib
+  - pip:
+    - visdom==0.2.4
+    - SimpleITK
+    - torch-summary
+

@@ -27,6 +27,7 @@ def load_dataset(root_dir, train=True):
         images.append(os.path.join(images_path, image_name))
         groundtruth.append(os.path.join(groundtruth_path, groundtruth_name))
 
+    print(f"[STARE DATALOADER] Found {len(images)} imgs")
     return images, groundtruth
 
 

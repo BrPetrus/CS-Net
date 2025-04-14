@@ -17,8 +17,10 @@ def load_dataset(root_dir, train=True):
     images = []
     groundtruth = []
     if train:
+        print(f"DRIVE: loading training data")
         sub_dir = 'training'
     else:
+        print("DRIVE: loading testing data")
         sub_dir = 'test'
     images_path = os.path.join(root_dir, sub_dir, 'images')
     groundtruth_path = os.path.join(root_dir, sub_dir, '1st_manual')
