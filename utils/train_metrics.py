@@ -63,6 +63,7 @@ def metrics3dmse(pred, label, batch_size):
 
 
 def metrics3d(pred, label, batch_size):
+    raise DeprecationWarning("Use evaluation_metrics3D.py")
     pred = torch.argmax(pred, dim=1)  # for CE loss series
     outputs = (pred.data.cpu().numpy() * 255).astype(np.uint8)
     labels = (label.data.cpu().numpy() * 255).astype(np.uint8)

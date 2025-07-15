@@ -54,8 +54,9 @@ class Data(Dataset):
 
             # Load the images
             img = self._load_stack(str(input_image_path)).astype(np.float32)
-            gt_raw = self._load_stack(str(groundtruth_path)).astype(np.int64)
-            gt = np.zeros_like(gt_raw)
+            gt_raw = self._load_stack(str(groundtruth_path)).astype(np.float32)
+            gt = np.zeros_like(gt_raw, dtype=np.float32)
+            # gt[gt_raw > 128] = 255
             gt[gt_raw > 128] = 255
 
             # Transpose

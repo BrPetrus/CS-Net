@@ -21,8 +21,10 @@ import numpy as np
 import SimpleITK as sitk
 import glob
 import os
+import torch
 from scipy.spatial import distance
 from sklearn.metrics import f1_score
+from dataclasses import dataclass
 
 
 def numeric_score(pred, gt):
@@ -49,13 +51,51 @@ def IoU(pred, gt):
     return iou
 
 
-def metrics_3d(pred, gt):
-    FP, FN, TP, TN = numeric_score(pred, gt)
+@dataclass(frozen=True)
+class Metrics3D:
+    """ Dataclass to store the metrics for 3D images """
+    TP: float
+    FN: float
+    FP: float
+    TN: float
+    TPR: float
+    FNR: float
+    FPR: float
+    IoU: float
+    Acc: float
+    Sen: float
+    Spe: float
+    Dice: float
+    F1: float
+
+def metrics_3d(pred, gt) -> Metrics3D:
+    """ Calculates the metrics for 3D images """
+
+    # pred = (pred.detach().cpu().numpy() > 0.5).astype(np.uint8)
+    # pred = torch.argmax(pred, dim=1)
+    # output = np.zeros_like(pred, dtype=np.int32)
+    # gt = np.array(gt, dtype=np.int32)
+    # output[pred > 0.5] = 1
+    # outputs = (pred.data.cpu().numpy() * 255).astype(np.uint8)
+    # labels = (gt.data.cpu().numpy() * 255).astype(np.uint8)
+
+    # aux = (pred.detach().cpu().numpy() > 0.5)
+    # outputs = np.array(aux*255, dtype=np.int32)
+    # labels = np.array(gt.detach().cpu().numpy()*255, dtype=np.int32)
+    outputs = (pred > 0.5).astype(np.int32) * 255
+    labels = (gt * 255).astype(np.int32)
+
+    FP, FN, TP, TN = numeric_score(outputs, labels)
     tpr = TP / (TP + FN + 1e-10)
     fnr = FN / (FN + TP + 1e-10)
     fpr = FN / (FP + TN + 1e-10)
-    iou = TP / (TP + FN + FP + 1e-10)
-    return tpr, fnr, fpr, iou
+    iou = TP / (TP + FN + FP + 1e-10)  # TODO: rename to Jaccard Index
+    Acc = (TP + TN) / (TP + TN + FP + FN + 1e-10)
+    Sen = TP / (TP + FN + 1e-10)
+    Spe = TN / (TN + FP + 1e-10)
+    Dice = 2 * TP / (2 * TP + FP + FN + 1e-10)
+    F1 = f1_score(labels.flatten(), outputs.flatten(), pos_label=255)
+    return Metrics3D(TP, FN, FP, TN, tpr, fnr, fpr, iou, Acc, Sen, Spe, Dice, F1)
 
 
 def over_rate(pred, gt):

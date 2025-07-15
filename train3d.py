@@ -23,9 +23,9 @@ from model.csnet_3d import CSNet3D
 from dataloader.VascuSynthLoader import Data
 
 # Project files
-from utils.train_metrics import metrics3d
 from utils.losses import WeightedCrossEntropyLoss, DiceLoss
 from utils.visualize import init_visdom_line, update_lines
+from utils.evaluation_metrics3D import Metrics3D, metrics_3d
 
 from sklearn.model_selection import KFold
 
@@ -79,9 +79,9 @@ def train_with_kfold(device) -> List[nn.Module]:
     # Load training data
     full_train_data = Data(args['data_path'], train=True)
 
-    criterion = nn.CrossEntropyLoss().to(device)
-    criterion2 = WeightedCrossEntropyLoss().to(device)
-    criterion3 = DiceLoss(device=device).to(device)
+    # criterion = nn.CrossEntropyLoss().to(device)
+    # criterion2 = WeightedCrossEntropyLoss().to(device)
+    # criterion3 = DiceLoss(device=device).to(device)
 
     # Start training
     print("\033[1;30;44m {} Start training ... {}\033[0m".format("*" * 8, "*" * 8))
@@ -89,11 +89,12 @@ def train_with_kfold(device) -> List[nn.Module]:
     # K Fold loop
     for fold, (train_index, validation_index) in enumerate(kf.split(full_train_data)):
         print(f"Fold: {fold}")
-        net = CSNet3D(classes=2, channels=1).to(device)
+        net = CSNet3D(channels=1).to(device)
         if torch.cuda.device_count() > 1:
             net = nn.DataParallel(net).to(device)
         else:
             net = net.to(device)
+        criterion = nn.BCEWithLogitsLoss().to(device)
         optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=args['learning_rate_decay'])
         nets.append(net)
 
@@ -110,6 +111,8 @@ def train_with_kfold(device) -> List[nn.Module]:
             print(f"Epoch {epoch+1}/{args['epochs']} with learning rate {optimizer.param_groups[0]['lr']}")
             net.train()
             for idx, batch in enumerate(train_loader):
+                print(f"Batch {idx+1}/{len(train_loader)}")
+
                 # Get the data
                 image = batch[0].to(device)
                 label = batch[1].to(device)
@@ -119,21 +122,23 @@ def train_with_kfold(device) -> List[nn.Module]:
                 pred = net(image)
 
                 # Calculate the loss
-                loss_dice = criterion3(pred, label)
-                label = label.squeeze(1)
-                loss_ce = criterion(pred, label)
-                loss_wce = criterion2(pred, label)
-                loss = (loss_ce + 0.6 * loss_wce + 0.4 * loss_dice) / 3
+                # loss_dice = criterion3(pred, label)
+                # label = label.squeeze(1)
+                # loss_ce = criterion(pred, label)
+                # loss_wce = criterion2(pred, label)
+                # loss = (loss_ce + 0.6 * loss_wce + 0.4 * loss_dice) / 3
+                loss = criterion(pred, label)
+                print(f"Loss: {loss.item()}")
                 loss.backward()
                 optimizer.step()
 
-                # Print the metrics
-                tp, fn, fp, iou = metrics3d(pred, label, pred.shape[0])
-                print(
-                    '\033[1;36m [{0:d}:{1:d}] \u2501\u2501\u2501 loss:{2:.10f}\tTP:{3:.4f}\tFN:{4:.4f}\tFP:{5:.4f}\tIoU:{6:.4f} '.format(
-                        epoch + 1, iters, loss.item(), tp / pred.shape[0], fn / pred.shape[0], fp / pred.shape[0],
-                        iou / pred.shape[0]))
-                iters += 1
+            # # Print the metrics
+            # metrics = metrics_3d(pred, label, pred.shape[0])
+            # print(
+            #     '\033[1;36m [{0:d}:{1:d}] \u2501\u2501\u2501 loss:{2:.10f}\tTP:{3:.4f}\tFN:{4:.4f}\tFP:{5:.4f}\tIoU:{6:.4f} '.format(
+            #         epoch + 1, iters, loss.item(), tp / pred.shape[0], fn / pred.shape[0], fp / pred.shape[0],
+            #         iou / pred.shape[0]))
+            # iters += 
 
             # adjust_lr(optimizer, base_lr=args['lr'], iter=global_iters, max_iter=args['epochs'] * len(train_loader), power=args['learning_rate_decay'])
 
@@ -144,31 +149,27 @@ def train_with_kfold(device) -> List[nn.Module]:
             # Run on validation set
             with torch.no_grad():
                 net.eval()
-                tp, fn, fp, iou, loss = 0, 0, 0, 0, 0
+                metrics_data: List[Metrics3D] = []
+                # TODO: is this correct for batch size > 1?
                 for idx, batch in enumerate(val_loader):
                     image = batch[0].to(device)
                     label = batch[1].to(device)
-                    pred = net(image)
-                    loss_dice = criterion3(pred, label)
-                    label = label.squeeze(1)
-                    loss_ce = criterion(pred, label)
-                    loss_wce = criterion2(pred, label)
-                    loss += ((loss_ce + 0.6 * loss_wce + 0.4 * loss_dice) / 3).item()
-                    # tp, fn, fp, iou = metrics3d(pred, label, pred.shape[0])
-                    tp_batch, fn_batch, fp_batch, iou_batch = metrics3d(pred, label, pred.shape[0])
-                    tp += tp_batch
-                    fn += fn_batch
-                    fp += fp_batch
-                    iou += iou_batch
-                tp /= len(val_loader)
-                fn /= len(val_loader)
-                fp /= len(val_loader)
-                iou /= len(val_loader)
-                loss /= len(val_loader)
+                    pred = net(image).cpu().numpy()
+                    label = label.cpu().numpy()
+                    metrics_data.append(metrics_3d(pred, label))
+                
+                # Calculate the averages across the validation set
+                avg_acc = np.mean([m.Acc for m in metrics_data])
+                avg_iou = np.mean([m.IoU for m in metrics_data])
+                avg_dice = np.mean([m.Dice for m in metrics_data])
+                avg_sen = np.mean([m.Sen for m in metrics_data])
+                avg_spe = np.mean([m.Spe for m in metrics_data])
+                avg_f1 = np.mean([m.F1 for m in metrics_data])
 
                 print(
-                    f'Validation loss: {loss} TP: {tp} FN: {fn} FP: {fp} IoU: {iou}'
+                    f"Accuracy: {avg_acc:.4f} IoU: {avg_iou:.4f} Dice: {avg_dice:.4f} Sensitivity: {avg_sen:.4f} Specificity: {avg_spe:.4f} F1: {avg_f1:.4f}"
                 )
+
 
         # Save the final model
         save_ckpt(net, f'final_fold-{fold}')
@@ -184,44 +185,53 @@ def model_eval(net, criterion, iters, device, output_dir: str):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
-    TP, FN, FP, IoU = [], [], [], []
-    file_num = 0
     net.eval()
     with torch.no_grad():
+        metrics = []
         for idx, batch in enumerate(batchs_data):
-            image = batch[0].float().to(device)
+            image = batch[0].to(device)
             label = batch[1].to(device)
-            pred_val = net(image)
-            label = label.squeeze(1)
+            pred = net(image)
+            # pred = torch.argmax(pred_val, dim=1)
+            # pred = (pred * 255).cpu().numpy().astype(np.uint8)
+            # label = label.squeeze(1)
 
-            fig, ax = plt.subplots(3, 1)
-            ax[0].imshow(image[0, 0, :, :, 32].cpu().numpy())
-            ax[1].imshow(pred_val[0, 1, :, :, 32].cpu().numpy())
-            ax[2].imshow(label[0, :, :, 32].cpu().numpy())
+            image = image.cpu().numpy()
+            pred = pred.cpu().numpy()
+            label = label.cpu().numpy()
+
+            fig, ax = plt.subplots(3, 2)
+            ax = ax.flatten()
+            ax[0].imshow(image[0, 0, :, :, 32])
+            ax[0].set_title('Input')
+            ax[1].imshow(pred[0, 0, :, :, 32])
+            ax[1].set_title('Prediction')
+            ax[2].imshow(label[0, 0, :, :, 32])
+            ax[2].set_title('Label')
             fig.savefig(os.path.join(output_dir, f'result_{idx}.png'))
-            plt.show()
+            # plt.show()
 
             # Now save the whole stacks
-            image_stack = image[0, 0].cpu().numpy()
-            pred_stack = pred_val[0, 1].cpu().numpy()
-            label_stack = label[0].cpu().numpy() * 255
+            image_stack = image[0, 0]
+            pred_stack = pred[0, 0]
+            label_stack = label[0, 0]
+
 
             tiff.imwrite(os.path.join(output_dir, f'image_stack_{idx}.tiff'), image_stack)
             tiff.imwrite(os.path.join(output_dir, f'pred_stack_{idx}.tiff'), pred_stack)
             tiff.imwrite(os.path.join(output_dir, f'label_stack_{idx}.tiff'), label_stack)
 
-            loss = criterion(pred_val, label)
-            tp, fn, fp, iou = metrics3d(pred_val, label, pred_val.shape[0])
-            print(
-                "--- test TP:{0:.4f}    test FN:{1:.4f}    test FP:{2:.4f}    test IoU:{3:.4f}".format(tp, fn, fp, iou))
-            TP.append(tp)
-            FN.append(fn)
-            FP.append(fp)
-            IoU.append(iou)
-            file_num += 1
-    return np.mean(TP), np.mean(FN), np.mean(FP), np.mean(IoU)
+            metrics.append(metrics_3d(pred, label))
+    
+    # Calculate the averages across the validation set
+    avg_acc = np.mean([m.Acc for m in metrics])
+    avg_iou = np.mean([m.IoU for m in metrics])
+    avg_dice = np.mean([m.Dice for m in metrics])
+    avg_sen = np.mean([m.Sen for m in metrics])
+    avg_spe = np.mean([m.Spe for m in metrics])
+    avg_f1 = np.mean([m.F1 for m in metrics])
 
-
+    return avg_acc, avg_iou, avg_dice, avg_sen, avg_spe, avg_f1
 
 
 if __name__ == '__main__':
@@ -232,7 +242,7 @@ if __name__ == '__main__':
     # Evaluate the model
     for i, net in enumerate(nets):
         print(f"Model {i}")
-        tp, fn, fp, iou = model_eval(net, nn.CrossEntropyLoss(), i, device, f'./result/net-{i}')
-        print(f"TP: {tp} FN: {fn} FP: {fp} IoU: {iou}")
+        acc, iout, dice, sen, spe, f1 = model_eval(net, nn.CrossEntropyLoss(), i, device, f'./result/net-{i}')
+        print(f"Model {i} - Accuracy: {acc:.4f} IoU: {iout:.4f} Dice: {dice:.4f} Sensitivity: {sen:.4f} Specificity: {spe:.4f} F1: {f1:.4f}")
 
 

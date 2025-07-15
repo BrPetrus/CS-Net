@@ -16,15 +16,16 @@ def deconv(in_channels, out_channels):
 
 
 def initialize_weights(*models):
-    for model in models:
-        for m in model.modules():
-            if isinstance(m, nn.Conv3d) or isinstance(m, nn.Linear):
-                nn.init.kaiming_normal(m.weight)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm3d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+    raise DeprecationWarning
+#     for model in models:
+#         for m in model.modules():
+#             if isinstance(m, nn.Conv3d) or isinstance(m, nn.Linear):
+#                 nn.init.kaiming_normal(m.weight)
+#                 if m.bias is not None:
+#                     m.bias.data.zero_()
+#             elif isinstance(m, nn.BatchNorm3d):
+#                 m.weight.data.fill_(1)
+#                 m.bias.data.zero_()
 
 
 class ResEncoder3d(nn.Module):
@@ -151,9 +152,8 @@ class AffinityAttention3d(nn.Module):
 
 
 class CSNet3D(nn.Module):
-    def __init__(self, classes, channels):
+    def __init__(self, channels):
         """
-        :param classes: the object classes number.
         :param channels: the channels of the input image.
         """
         super(CSNet3D, self).__init__()
@@ -163,7 +163,8 @@ class CSNet3D(nn.Module):
         self.encoder3 = ResEncoder3d(64, 128)
         self.encoder4 = ResEncoder3d(128, 256)
         self.downsample = downsample()
-        self.affinity_attention = AffinityAttention3d(256)
+        # self.affinity_attention = AffinityAttention3d(256)
+        self.affinity_attention = None
         self.attention_fuse = nn.Conv3d(256 * 2, 256, kernel_size=1)
         self.decoder4 = Decoder3d(256, 128)
         self.decoder3 = Decoder3d(128, 64)
@@ -173,8 +174,8 @@ class CSNet3D(nn.Module):
         self.deconv3 = deconv(128, 64)
         self.deconv2 = deconv(64, 32)
         self.deconv1 = deconv(32, 16)
-        self.final = nn.Conv3d(16, classes, kernel_size=1)
-        initialize_weights(self)
+        self.final = nn.Conv3d(16, 1, kernel_size=1)
+        # initialize_weights(self)
 
     def forward(self, x):
         enc_input = self.enc_input(x)
@@ -192,8 +193,9 @@ class CSNet3D(nn.Module):
         input_feature = self.encoder4(down4)
 
         # Do Attenttion operations here
-        attention = self.affinity_attention(input_feature)
-        attention_fuse = input_feature + attention
+        # attention = self.affinity_attention(input_feature)
+        # attention_fuse = input_feature + attention
+        attention_fuse = input_feature  # TODO: revert this line
 
         # Do decoder operations here
         up4 = self.deconv4(attention_fuse)
@@ -213,5 +215,23 @@ class CSNet3D(nn.Module):
         dec1 = self.decoder1(up1)
 
         final = self.final(dec1)
+
+        if self.training:
+            return final
+        
         final = F.sigmoid(final)
+        return final
+
+        # final = F.sigmoid(final)
+        # import matplotlib.pyplot as plt
+        # print(final.size())
+        # print(x.size())
+        # fig, ax = plt.subplots(2, 2)
+        # ax = ax.flatten()
+        # ax[0].imshow(final[0, 0, 32, :, :].detach().cpu().numpy())
+        # ax[1].imshow(final[0, 1, 32, :, :].detach().cpu().numpy())
+        # ax[2].imshow(x[0, 0, 32, :, :].detach().cpu().numpy())
+        # plt.show()
+        # raise RuntimeError("Debug")
+        # final = F.softmax(final, dim=1)
         return final
