@@ -12,7 +12,8 @@ args = {
     'root': DATABASE,
     'test_path': DATABASE + 'test/',
     'pred_path': './predictions/',
-    'img_size' : 512
+    'img_size' : 512,
+    'checkpoint_path': "./models/tnt-csnet.pth"
 }
 
 if not os.path.exists(args['pred_path']):
@@ -53,10 +54,10 @@ def save_imgs(pred, prefix=''):
         raise ValueError("Expected an array of 2D grayscale images")
     for z_idx in range(pred.shape[0]):
         img = Image.fromarray(pred[z_idx, ...])
-        img.save(f"{prefix}_{z_idx}.tif")
+        img.save(os.path.join(save_path, f"{prefix}_{z_idx}.tif"))
 
 def predict(device="cpu"):
-    net = load_net()
+    net = load_net(args['checkpoint_path'])
     dataset = load_tnt()
     dataloader = DataLoader(dataset, 8, False)
 
@@ -70,7 +71,7 @@ def predict(device="cpu"):
             img_dev = img.to(device)
             output = torch.sigmoid(net(img_dev)).detach().cpu().numpy()
             thresholded = output > 0.5
-
+            mask = mask.cpu().numpy()
             TP += ((thresholded == True) & (mask == True)).float().sum()
             TN += ((thresholded == False) & (mask == False)).float().sum()
             FP += ((thresholded == True) & (mask == False)).float().sum()
@@ -81,10 +82,16 @@ def predict(device="cpu"):
 
     
     # Evaluate
-    accuracy = (TP+TN) / (TP+TN+FP+FN)
-    precision = (TP) / (TP+FP)
-    recall = TP / (TP+FN)
+    total = TP + TN + FP + FN
 
+    accuracy = (TP+TN) / total if total != 0 else 0.0
+    precision = TP / (TP+FP) if TP+FP != 0 else 0.0
+    recall = TP / (TP+FN) if TP+FN != 0 else 0.0
+
+    print(f"Metrics:\n"
+          f"Accuracy: {accuracy*100:.2f}%\n"
+          f"Precision: {precision*100:.2f}%\n"
+          f"Recall: {recall*100:.2f}%")
     print(f"Metrics:"
           f"Accuracy: {accuracy*100:.2f}%"
           f"Precision: {precision*100:.2f}%"
