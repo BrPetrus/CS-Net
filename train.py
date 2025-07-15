@@ -18,32 +18,33 @@ from utils.dice_loss_single_class import dice_coeff_loss
 from sklearn.model_selection import KFold
 
 args = {
-    'root'      : '/home/bruno/DP/CS-Net',
-    'data_path' : '/home/bruno/DP/STARE',
-    'epochs'    : 2000,
+    'root'      : '/home/xpetrus/DP/CS-Net',
+    'data_path' : '/home/xpetrus/DP/Datasets/External/STARE',
+    # 'data_path' : '/home/bruno/DP/Datasets/TNT_data/tnt_dataset_csnet_2dsplit',
+    'epochs'    : 200,
     'lr'        : 0.0001,
     'snapshot'  : 100,
     'test_step' : 1,
     'ckpt_path' : 'checkpoint/',
-    'batch_size': 2,
-    'kfold'     : 5,
+    'batch_size': 4,
+    'kfold'     : 2,
 }
 
 # # # Visdom---------------------------------------------------------
-# X, Y = 0, 0.5  # for visdom
-# x_acc, y_acc = 0, 0
-# x_sen, y_sen = 0, 0
-# env, panel = init_visdom_line(X, Y, title='Train Loss', xlabel="iters", ylabel="loss")
-# env1, panel1 = init_visdom_line(x_acc, y_acc, title="Accuracy", xlabel="iters", ylabel="accuracy")
-# env2, panel2 = init_visdom_line(x_sen, y_sen, title="Sensitivity", xlabel="iters", ylabel="sensitivity")
+X, Y = 0, 0.5  # for visdom
+x_acc, y_acc = 0, 0
+x_sen, y_sen = 0, 0
+env, panel = init_visdom_line(X, Y, title='Train Loss', xlabel="iters", ylabel="loss")
+env1, panel1 = init_visdom_line(x_acc, y_acc, title="Accuracy", xlabel="iters", ylabel="accuracy")
+env2, panel2 = init_visdom_line(x_sen, y_sen, title="Sensitivity", xlabel="iters", ylabel="sensitivity")
 # # # ---------------------------------------------------------------
 
 def save_ckpt(net, iter, kfold=None):
     if not os.path.exists(args['ckpt_path']):
         os.makedirs(args['ckpt_path'])
-    path = args['ckpt_path'] + 'CS_Net_DRIVE_' 
+    path = args['ckpt_path'] + 'CS_Net_STARE_'
     if kfold is not None:
-        path += kfold
+        path += str(kfold)
         path += "_"
     path += str(iter) + '.pkl'
     torch.save(net, path)
@@ -66,9 +67,7 @@ def train_with_kfodl():
         else "cpu"
     )
 
-
-    k_folds = 4
-    kf = KFold(n_splits=k_folds, shuffle=True)
+    kf = KFold(n_splits=args['kfold'], shuffle=True)
     
     # set the channels to 3 when the format is RGB, otherwise 1.
     #net = CSNet(classes=1, channels=3).cuda()
@@ -85,7 +84,7 @@ def train_with_kfodl():
     
     # K-Fold loop
     for fold, (train_idx, val_idx) in enumerate(kf.split(full_dataset)):
-        print(f"fold {fold+1}/{k_folds}")
+        print(f"fold {fold+1}/{args['kfold']}")
         
         init_fold_visualization(fold+1)
 
@@ -93,16 +92,19 @@ def train_with_kfodl():
         # TODO: reuse the same memory
         net = CSNet(classes=1, channels=3).to(device)
         optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
+        dataloader = DataLoader(full_dataset, args['batch_size'], shuffle=True)
         #net = nn.DataParallel(net).cuda()
         
-        # Create training and validation subsets for this fold
-        train_subset = Subset(full_dataset, train_idx)
-        val_subset = Subset(full_dataset, val_idx)
+        # # Create training and validation subsets for this fold
+        # train_subset = Subset(full_dataset, train_idx)
+        # val_subset = Subset(full_dataset, val_idx)
         
-        # DataLoaders for batching
-        train_loader = DataLoader(train_subset, batch_size=args['batch_size'], num_workers=2, shuffle=True)
-        val_loader = DataLoader(val_subset, batch_size=args['batch_size'], num_workers=2, shuffle=False)  # TODO: not used now
+        # # DataLoaders for batching
+        # train_loader = DataLoader(train_subset, batch_size=args['batch_size'], num_workers=2, shuffle=True)
+        # val_loader = DataLoader(val_subset, batch_size=args['batch_size'], num_workers=2, shuffle=False)  # TODO: not used now
         
+        
+
         # Reset model weights for this fold
         #net.apply(init_weights)  # Optional: Reset weights to avoid contamination
         
@@ -111,7 +113,7 @@ def train_with_kfodl():
         t=0
         for epoch in range(args['epochs']):
             print(f"Epoch {epoch + 1}/{args['epochs']}")
-            for idx, batch in enumerate(train_loader):
+            for idx, batch in enumerate(dataloader):
                 image = batch[0].to(device)
                 label = batch[1].to(device)
                 
@@ -149,14 +151,11 @@ def train_with_kfodl():
             if (epoch + 1) % args['snapshot'] == 0:
                 save_ckpt(net, epoch + 1, f"fold-{fold+1}")
         
-        # Validation loop for this fold
-        #validate(net, val_loader, criterion, fold)
-        fold_acc, fold_sens = model_eval(net)
-        print(f"Fold {fold+1}/{k_folds}: acc={fold_acc}, sens={fold_sens}")
+
+        fold_acc, fold_sens = model_eval(net, device)
+        print(f"Fold {fold+1}/{args['kfold']}: acc={fold_acc}, sens={fold_sens}")
         nets.append((net, fold_acc, fold_sens))
-    
-
-
+        save_ckpt(net, epoch, fold)
 # def train():
 #     device = (
 #         "cuda"
@@ -227,26 +226,28 @@ def train_with_kfodl():
 #                 sensitivty = test_sen
 
 
-def model_eval(net):
-    raise RuntimeError("model_eval should not be called")
+def model_eval(net, device):
+    # raise RuntimeError("model_eval should not be called")
     print("Start testing model...")
+    # return 0.0, 0.0
     test_data = Data(args['data_path'], train=False)
     batchs_data = DataLoader(test_data, batch_size=1)
 
-    net.eval()
-    Acc, Sen = [], []
-    file_num = 0
-    for idx, batch in enumerate(batchs_data):
-        image = batch[0].float().to(device)
-        label = batch[1].float().to(device)
-        pred_val = net(image)
-        acc, sen = metrics(pred_val, label, pred_val.shape[0])
-        print("\t---\t test acc:{0:.4f}    test sen:{1:.4f}".format(acc, sen))
-        Acc.append(acc)
-        Sen.append(sen)
-        file_num += 1
-        # for better view, add testing visdom here.
-        return np.mean(Acc), np.mean(Sen)
+    with torch.no_grad():
+        net.eval()
+        Acc, Sen = [], []
+        file_num = 0
+        for idx, batch in enumerate(batchs_data):
+            image = batch[0].float().to(device)
+            label = batch[1].float().to(device)
+            pred_val = net(image)
+            acc, sen = metrics(pred_val, label, pred_val.shape[0])
+            print("\t---\t test acc:{0:.4f}    test sen:{1:.4f}".format(acc, sen))
+            Acc.append(acc)
+            Sen.append(sen)
+            file_num += 1
+            # for better view, add testing visdom here.
+            return np.mean(Acc), np.mean(Sen)
 
 def init_visdom_line(X, Y, title, xlabel, ylabel, env_name):
     env = viz

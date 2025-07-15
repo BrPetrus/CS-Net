@@ -135,9 +135,11 @@ def load_net():
     #net = torch.load('./checkpoint/xxxx.pkl'):w
     torch.serialization.add_safe_globals('torch.nn.parallel.data_parallel.DataParallel')
     #net_drive = torch.load('./checkpoint/CS_Net_DRIVE_9900.pkl', weights_only=False)
-    net_stare = torch.load('./checkpoint_STARE_2024-11-14/CS_Net_DRIVE_1200.pkl', weights_only=False)
+    #net_stare = torch.load('./checkpoint_STARE_2024-11-14/CS_Net_DRIVE_1200.pkl', weights_only=False)
+    # net_stare_new = torch.load("./checkpoint/CS_Net_STARE_0_9.pkl")
+    net_stare_new = torch.load("./checkpoint/CS_Net_STARE_0_199.pkl")
 
-    net = net_stare
+    net = net_stare_new
     return net
 
 
