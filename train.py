@@ -10,17 +10,19 @@ from torchsummary import summary
 import visdom
 import numpy as np
 from model.csnet import CSNet
-from dataloader.stare import Data
+#from dataloader.stare import Data
+from dataloader.tnt import TNTData
 from utils.train_metrics import metrics
 from utils.visualize import init_visdom_line, update_lines
 from utils.dice_loss_single_class import dice_coeff_loss
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import KFold
 
 args = {
     'root'      : '/home/xpetrus/DP/CS-Net',
-    'data_path' : '/home/xpetrus/DP/Datasets/External/STARE',
-    # 'data_path' : '/home/bruno/DP/Datasets/TNT_data/tnt_dataset_csnet_2dsplit',
+    # 'data_path' : '/home/xpetrus/DP/Datasets/External/STARE',
+    'data_path' : '/home/xpetrus/DP/Datasets/TNT_data/tnt_dataset_csnet_2dsplit',
     'epochs'    : 200,
     'lr'        : 0.0001,
     'snapshot'  : 100,
@@ -42,7 +44,7 @@ env2, panel2 = init_visdom_line(x_sen, y_sen, title="Sensitivity", xlabel="iters
 def save_ckpt(net, iter, kfold=None):
     if not os.path.exists(args['ckpt_path']):
         os.makedirs(args['ckpt_path'])
-    path = args['ckpt_path'] + 'CS_Net_STARE_'
+    path = args['ckpt_path'] + 'CS_Net_TNT_'
     if kfold is not None:
         path += str(kfold)
         path += "_"
@@ -79,158 +81,83 @@ def train_with_kfodl():
 
     print("---------------start training- with K Fold-----------------")
     # load train datasetfor fold, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
-    full_dataset = Data(args['data_path'], train=True)
-    
-    
-    # K-Fold loop
-    for fold, (train_idx, val_idx) in enumerate(kf.split(full_dataset)):
-        print(f"fold {fold+1}/{args['kfold']}")
-        
-        init_fold_visualization(fold+1)
+    full_dataset = TNTData(args['data_path'], train=True)
 
-        # Create the nets
-        # TODO: reuse the same memory
-        net = CSNet(classes=1, channels=3).to(device)
-        optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
-        dataloader = DataLoader(full_dataset, args['batch_size'], shuffle=True)
-        #net = nn.DataParallel(net).cuda()
-        
-        # # Create training and validation subsets for this fold
-        # train_subset = Subset(full_dataset, train_idx)
-        # val_subset = Subset(full_dataset, val_idx)
-        
-        # # DataLoaders for batching
-        # train_loader = DataLoader(train_subset, batch_size=args['batch_size'], num_workers=2, shuffle=True)
-        # val_loader = DataLoader(val_subset, batch_size=args['batch_size'], num_workers=2, shuffle=False)  # TODO: not used now
-        
-        
+    # Create the nets
+    # TODO: reuse the same memory
+    net = CSNet(classes=1, channels=3).to(device)
+    optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
+    dataloader = DataLoader(full_dataset, args['batch_size'], shuffle=True)
 
-        # Reset model weights for this fold
-        #net.apply(init_weights)  # Optional: Reset weights to avoid contamination
-        
-        # Training loop for this fold
-        net.train()
-        t=0
-        for epoch in range(args['epochs']):
-            print(f"Epoch {epoch + 1}/{args['epochs']}")
-            for idx, batch in enumerate(dataloader):
-                image = batch[0].to(device)
-                label = batch[1].to(device)
-                
-                # Zero gradients
-                optimizer.zero_grad()
-                
-                # Forward pass
-                pred = net(image)
-                
-                # Compute losses
-                loss1 = criterion(pred, label)
-                loss2 = dice_coeff_loss(pred, label)
-                loss = loss1 + loss2
-                
-                # Backpropagation
-                loss.backward()
-                optimizer.step()
-                
-                # Metrics
-                acc, sen = metrics(pred, label, pred.shape[0])
-                print('[Fold {0} Epoch {1} Batch {2}] --- Loss: {3:.10f}\tAcc: {4:.4f}\tSen: {5:.4f}'.format(
-                    fold + 1, epoch + 1, idx + 1, loss.item(), acc / pred.shape[0], sen / pred.shape[0]))
-
-
-                # Update Visdom plots
-                update_visdom_line(fold + 1, "loss", t, loss.item())
-                update_visdom_line(fold + 1, "accuracy", t, acc/pred.shape[0])
-                update_visdom_line(fold + 1, "sensitivity", t, sen/pred.shape[0])
-
-                t += 1
-            # Adjust learning rate
-            adjust_lr(optimizer, base_lr=args['lr'], iter=epoch, max_iter=args['epochs'], power=0.9)
-
-            # Save checkpoint at specified intervals
-            if (epoch + 1) % args['snapshot'] == 0:
-                save_ckpt(net, epoch + 1, f"fold-{fold+1}")
-        
-
-        fold_acc, fold_sens = model_eval(net, device)
-        print(f"Fold {fold+1}/{args['kfold']}: acc={fold_acc}, sens={fold_sens}")
-        nets.append((net, fold_acc, fold_sens))
-        save_ckpt(net, epoch, fold)
-# def train():
-#     device = (
-#         "cuda"
-#         if torch.cuda.is_available()
-#         else "mps"
-#         if torch.backends.mps.is_available()
-#         else "cpu"
-#     )
-#     print(f"Using {device} device")
-
-#     # set the channels to 3 when the format is RGB, otherwise 1.
-#     net = CSNet(classes=1, channels=3).to(device)
-#     net = nn.DataParallel(net).to(device)
-#     optimizer = optim.Adam(net.parameters(), lr=args['lr'], weight_decay=0.0005)
-#     critrion = nn.MSELoss().to(device)
-#     # critrion = nn.CrossEntropyLoss().cuda()
-#     print("---------------start training------------------")
-#     # load train dataset
-#     train_data = Data(args['data_path'], train=True)
-#     # TODO: num_workers ~> args
-#     batchs_data = DataLoader(train_data, batch_size=args['batch_size'], num_workers=2, shuffle=True)
-
-#     iters = 1
-#     accuracy = 0.
-#     sensitivty = 0.
-#     net.train()
-#     for epoch in range(args['epochs']):
-#         print(f"Epoch {epoch}/{len(range(args['epochs']))}")
-#         for idx, batch in enumerate(batchs_data):
-#             image = batch[0].to(device)
-#             label = batch[1].to(device)
-#             optimizer.zero_grad()
-#             pred = net(image)
-#             pred = pred.squeeze_(1)
-#             loss1 = critrion(pred, label)
-#             loss1.backward()
-#             loss2 = dice_coeff_loss(pred, label)
-#             loss = loss1 + loss2
-#             loss.backward()
+    # Training loop for this fold
+    init_fold_visualization(1)
+    net.train()
+    t=0
+    fold=0
+    import matplotlib.pyplot as plt
+    for epoch in range(args['epochs']):
+        print(f"Epoch {epoch + 1}/{args['epochs']}")
+        for idx, batch in enumerate(dataloader):
+            image = batch[0].to(device)
+            label = batch[1].to(device)
             
-#             optimizer.step()
-#             acc, sen = metrics(pred, label, pred.shape[0])
-#             print('[{0:d}:{1:d}] --- loss:{2:.10f}\tacc:{3:.4f}\tsen:{4:.4f}'.format(epoch + 1,
-#                                                                                      iters, loss.item(),
-#                                                                                      acc / pred.shape[0],
-#                                                                                      sen / pred.shape[0]))
-#             iters += 1
-#             # # ---------------------------------- visdom --------------------------------------------------
-#             X, x_acc, x_sen = iters, iters, iters
-#             Y, y_acc, y_sen = loss.item(), acc / pred.shape[0], sen / pred.shape[0]
-#             update_lines(env, panel, X, Y)
-#             update_lines(env1, panel1, x_acc, y_acc)
-#             update_lines(env2, panel2, x_sen, y_sen)
-#             # # --------------------------------------------------------------------------------------------
+            # Zero gradients
+            optimizer.zero_grad()
+            
+            # Forward pass
+            pred = net(image)
+            
+            # if epoch == 50 or epoch == 0:
+            #     fig, ax = plt.subplots(ncols=2, nrows=2)
+            #     ax = ax.flatten()
+            #     print(image[0].shape)
+            #     ax[0].imshow(torch.permute(image[0].detach().cpu(), (1, 2, 0)))
+            #     ax[1].imshow(label[0, 0, ...].detach().cpu())
+            #     ax[2].imshow(pred[0, 0, ...].detach().cpu())
+            #     fig.tight_layout()
+            #     fig.suptitle("0th index from batch")
+            #     plt.savefig(f"epoch{epoch}.jpg")
 
-#         adjust_lr(optimizer, base_lr=args['lr'], iter=epoch, max_iter=args['epochs'], power=0.9)
-#         if (epoch + 1) % args['snapshot'] == 0:
-#             save_ckpt(net, epoch + 1)
+            # Compute losses
+            loss1 = criterion(pred, label)
+            loss2 = dice_coeff_loss(pred, label)
+            loss = loss1 + loss2
+            
+            # Backpropagation
+            loss.backward()
+            optimizer.step()
+            
+            # Metrics
+            acc, sen = metrics(pred, label, pred.shape[0])
+            print('[Fold {0} Epoch {1} Batch {2}] --- Loss: {3:.10f}\tAcc: {4:.4f}\tSen: {5:.4f}'.format(
+                fold + 1, epoch + 1, idx + 1, loss.item(), acc / pred.shape[0], sen / pred.shape[0]))
 
-#         # model eval
-#         if (epoch + 1) % args['test_step'] == 0:
-#             test_acc, test_sen = model_eval(net)
-#             print("Average acc:{0:.4f}, average sen:{1:.4f}".format(test_acc, test_sen))
 
-#             if (accuracy > test_acc) & (sensitivty > test_sen):
-#                 save_ckpt(net, epoch + 1 + 8888888)
-#                 accuracy = test_acc
-#                 sensitivty = test_sen
+            # Update Visdom plots
+            update_visdom_line(fold + 1, "loss", t, loss.item())
+            update_visdom_line(fold + 1, "accuracy", t, acc/pred.shape[0])
+            update_visdom_line(fold + 1, "sensitivity", t, sen/pred.shape[0])
+
+            t += 1
+        # Adjust learning rate
+        adjust_lr(optimizer, base_lr=args['lr'], iter=epoch, max_iter=args['epochs'], power=0.9)
+
+        # Save checkpoint at specified intervals
+        if (epoch + 1) % args['snapshot'] == 0:
+            save_ckpt(net, epoch + 1, f"fold-{fold+1}")
+    
+
+    fold_acc, fold_sens = model_eval(net, device)
+    print(f"Fold {fold+1}/{args['kfold']}: acc={fold_acc}, sens={fold_sens}")
+    nets.append((net, fold_acc, fold_sens))
+    save_ckpt(net, epoch, fold)
 
 
 def model_eval(net, device):
     # raise RuntimeError("model_eval should not be called")
     print("Start testing model...")
     # return 0.0, 0.0
-    test_data = Data(args['data_path'], train=False)
+    test_data = TNTData(args['data_path'], train=False)
     batchs_data = DataLoader(test_data, batch_size=1)
 
     with torch.no_grad():
@@ -247,7 +174,15 @@ def model_eval(net, device):
             Sen.append(sen)
             file_num += 1
             # for better view, add testing visdom here.
-            return np.mean(Acc), np.mean(Sen)
+            fig, ax = plt.subplots(nrows=2, ncols=2)
+            ax = ax.flatten()
+            ax[0].imshow(torch.permute(image[0], (1, 2, 0)).cpu().detach())
+            ax[1].imshow(label[0, 0].cpu().detach())
+            ax[2].imshow(pred_val[0, 0].cpu().detach())
+            ax[3].imshow(pred_val[0, 0].cpu().detach()*255 >= 100)
+            fig.tight_layout()
+            plt.savefig(f'{idx}.jpg')
+    return np.mean(Acc), np.mean(Sen)
 
 def init_visdom_line(X, Y, title, xlabel, ylabel, env_name):
     env = viz

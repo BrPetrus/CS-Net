@@ -7,6 +7,7 @@ from PIL import Image, ImageEnhance
 from utils.misc import ReScaleSize
 import random
 import warnings
+import numpy as np
 import tifffile
 
 warnings.filterwarnings('ignore')
@@ -24,7 +25,7 @@ def load_dataset(root_dir, train=True):
 
     for file in glob.glob(os.path.join(images_path, '*.tif')):
         image_name = os.path.basename(file)
-        groundtruth_name = f'mask{image_name[1:]}.tif'
+        groundtruth_name = f'mask{image_name[1:]}'
 
         # Read the files and split
         img = tifffile.imread(os.path.join(images_path, image_name))
@@ -37,7 +38,7 @@ def load_dataset(root_dir, train=True):
         
 
     print(f"[TNT DATALOADER] Found {len(split_imgs)} imgs")
-    return images, groundtruth
+    return split_imgs, split_masks
 
 class TNTData(Dataset):
     def __init__(self,
@@ -72,6 +73,7 @@ class TNTData(Dataset):
         return new_image, new_label
 
     def RandomEnhance(self, image):
+        return image
         value = random.uniform(-2, 2)
         random_seed = random.randint(1, 4)
         if random_seed == 1:
@@ -90,6 +92,13 @@ class TNTData(Dataset):
         # gt_path = self.groundtruth[idx]
         # image = Image.open(img_path)
         # label = Image.open(gt_path)
+        # TODO: does not support full 16bit
+        # TODO: WRONG!!!
+        data = self.images[idx]
+        data = (data - data.min()) / (data.max() - data.min())
+        data *= 255
+        image = Image.fromarray(np.repeat(data[..., np.newaxis], 3, axis=2).astype(np.uint8))
+        label = Image.fromarray((self.groundtruth[idx] > 0.0).astype(bool))
         image = ReScaleSize(image, self.resize)
         label = ReScaleSize(label, self.resize)
 
@@ -118,4 +127,9 @@ class TNTData(Dataset):
         image = self.transform(image)
         label = self.transform(label)
 
+        # import matplotlib.pyplot as plt
+        # plt.imshow(np.transpose(image, (1, 2, 0)))
+        # plt.figure()
+        # plt.imshow(label[0])
+        # plt.show()
         return image, label

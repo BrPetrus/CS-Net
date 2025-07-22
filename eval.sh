@@ -9,4 +9,4 @@ ulimit -t $TIME
 
 #source ~/miniforge3/
 #/home/xpetrus/miniforge3/bin/conda activate cs2
-nice -n 15 python predict.py
+nice -n 15 python predict_tnt.py

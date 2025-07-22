@@ -7,13 +7,13 @@ import os
 from dataloader.tnt import load_dataset, TNTData
 from torch.utils.data import DataLoader
 
-DATABASE = '/home/bruno/DP/dataset/180322_Sqh-mCh Tub-GFP 16h_110 Annotations_Split/'
+DATABASE = '/home/xpetrus/DP/Datasets/TNT_data/tnt_dataset_csnet_2dsplit'
 args = {
     'root': DATABASE,
     'test_path': DATABASE + 'test/',
     'pred_path': './predictions/',
     'img_size' : 512,
-    'checkpoint_path': "./models/tnt-csnet.pth"
+    'checkpoint_path': "./checkpoint/CS_Net_TNT_fold-1_100.pkl"
 }
 
 if not os.path.exists(args['pred_path']):
@@ -32,9 +32,8 @@ def rescale(img):
 
 
 def load_tnt():
-    load_dataset(args['test_path'], train=False)
     return TNTData(
-        args['test_path'],
+        DATABASE,
         False,
     )
     
@@ -57,7 +56,7 @@ def save_imgs(pred, prefix=''):
         img.save(os.path.join(save_path, f"{prefix}_{z_idx}.tif"))
 
 def predict(device="cpu"):
-    net = load_net(args['checkpoint_path'])
+    net = load_net(args['checkpoint_path']).to(device)
     dataset = load_tnt()
     dataloader = DataLoader(dataset, 8, False)
 
@@ -69,16 +68,21 @@ def predict(device="cpu"):
     with torch.no_grad():
         for batch_idx, (img, mask) in enumerate(dataloader):
             img_dev = img.to(device)
-            output = torch.sigmoid(net(img_dev)).detach().cpu().numpy()
+            output = torch.sigmoid(net(img_dev)).detach().cpu()
             thresholded = output > 0.5
-            mask = mask.cpu().numpy()
+            mask = mask.cpu()
             TP += ((thresholded == True) & (mask == True)).float().sum()
             TN += ((thresholded == False) & (mask == False)).float().sum()
             FP += ((thresholded == True) & (mask == False)).float().sum()
             FN += ((thresholded == False) & (mask == True)).float().sum()
 
             # Save the predictions
-            save_imgs(output, str(batch_idx))
+            print(f"output shape {output.shape}")
+            print(f"mask shape {mask.shape}")
+            print(f"max value in batch data {img.max()}")
+            print(f" in label {mask.max()}")
+            save_imgs(output.squeeze(1).numpy(), str(batch_idx))  # remove fake channel
+            save_imgs(thresholded.squeeze(1).numpy(), f'{batch_idx}-thresh')
 
     
     # Evaluate

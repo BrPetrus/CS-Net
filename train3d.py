@@ -33,7 +33,7 @@ from typing import List
 
 args = {
     'root'      : '/home/xpetrus/DP/CS-Net',
-    'data_path' : '/home/xpetrus/DP/Datasets/External/VascuSynthMine02',
+    'data_path' : '/home/xpetrus/DP/Datasets/External/VascuSynthMine03',
     # 'root'      : '/home/bruno/DP/CS-Net',
     # 'data_path' : '/home/bruno/DP/VascuSynth/dataset',
     'epochs'    : 100,
