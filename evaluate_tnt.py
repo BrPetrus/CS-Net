@@ -9,13 +9,15 @@ from dataloader.tnt import load_dataset, TNTData
 from torch.utils.data import DataLoader
 from utils.train_metrics import metrics, threshold
 
-DATABASE = '/home/xpetrus/DP/Datasets/TNT_data/tnt_dataset_csnet_2dsplit'
+# DATABASE = '/home/xpetrus/DP/Datasets/TNT_data/tnt_dataset_csnet_2dsplit'
+DATABASE = '/home/xpetrus/DP/Datasets/TNT_data/annotations/testinginferenceonsometimes'
 args = {
     'root': DATABASE,
-    'test_path': DATABASE + 'test/',
+    # 'test_path': DATABASE + 'test/',
     'pred_path': './predictions/',
     'img_size' : 512,
-    'checkpoint_path': "./checkpoint/CS_Net_TNT_fold-1_100.pkl"
+    'checkpoint_path': "./checkpoint/CS_Net_TNT_fold-1_100.pkl",
+    'inference' : True
 }
 
 if not os.path.exists(args['pred_path']):
@@ -37,6 +39,7 @@ def load_tnt():
     return TNTData(
         DATABASE,
         False,
+        inference=args['inference']
     )
     
 
@@ -75,30 +78,36 @@ def predict(device="cpu"):
     FP = 0
     FN = 0
     with torch.no_grad():
-        for batch_idx, (img, mask) in enumerate(dataloader):
+        for batch_idx, batch_data in enumerate(dataloader):
+            if args['inference']:
+                img = batch_data
+            else:
+                img, mask = batch_data
+            
             img_dev = img.to(device)
         
             raw_pred = net(img_dev)
             outputs = (raw_pred.data.cpu().numpy() * 255).astype(np.uint8)
-            labels = (mask.data.cpu().numpy() * 255).astype(np.uint8)
             outputs = outputs.squeeze(1)
-            labels = labels.squeeze(1)
             thresholded = threshold(outputs)
 
-            TP += np.sum((thresholded == 255) & (labels == 255))
-            TN += np.sum((thresholded == 0) & (labels == 0))
-            FP += np.sum((thresholded == 255) & (labels == 0))
-            FN += np.sum((thresholded == 0) & (labels == 255))
+            if not args['inference']:
+                labels = (mask.data.cpu().numpy() * 255).astype(np.uint8)
+                labels = labels.squeeze(1)
+                TP += np.sum((thresholded == 255) & (labels == 255))
+                TN += np.sum((thresholded == 0) & (labels == 0))
+                FP += np.sum((thresholded == 255) & (labels == 0))
+                FN += np.sum((thresholded == 0) & (labels == 255))
+                print(f"mask shape {labels.shape}")
+                print(f"max value in label {labels.max()}")
+                save_imgs(labels, f'{batch_idx}-labels')
 
             # Save the predictions
             print(f"raw pred shape {raw_pred.shape}")
-            print(f"mask shape {labels.shape}")
             print(f"max value in batch data {img.max()}")
-            print(f" in label {labels.max()}")
             save_imgs(img.numpy(), f'{batch_idx}-img')
             save_imgs(outputs, f'{batch_idx}-outputs')  # remove fake channel
             save_imgs(thresholded, f'{batch_idx}-thresh')
-            save_imgs(labels, f'{batch_idx}-labels')
 
     
     # Evaluate

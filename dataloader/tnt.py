@@ -13,11 +13,13 @@ import tifffile
 warnings.filterwarnings('ignore')
 
 
-def load_dataset(root_dir, train=True):
+def load_dataset(root_dir, train=True, inference=False):
     images = []
     groundtruth = []
     if train:
         sub_dir = 'training'
+    elif inference:
+        sub_dir = "inference"
     else:
         sub_dir = 'test'
     images_path = os.path.join(root_dir, sub_dir, 'images')
@@ -29,15 +31,19 @@ def load_dataset(root_dir, train=True):
 
         # Read the files and split
         img = tifffile.imread(os.path.join(images_path, image_name))
-        mask = tifffile.imread(os.path.join(groundtruth_path, groundtruth_name))
+        if not inference:
+            mask = tifffile.imread(os.path.join(groundtruth_path, groundtruth_name))
         split_imgs = []
         split_masks = []
         for z_idx in range(img.shape[0]):
             split_imgs.append(img[z_idx, ...])
-            split_masks.append(mask[z_idx, ...])
+            if not inference:
+                split_masks.append(mask[z_idx, ...])
         
 
     print(f"[TNT DATALOADER] Found {len(split_imgs)} imgs")
+    if inference:
+        return split_imgs, []
     return split_imgs, split_masks
 
 class TNTData(Dataset):
@@ -47,8 +53,10 @@ class TNTData(Dataset):
                  rotate=40,
                  flip=True,
                  random_crop=True,
-                 scale1=688):
+                 scale1=688,
+                 inference=False):
 
+        self.inference = inference
         self.root_dir = root_dir
         self.train = train
         self.rotate = rotate
@@ -56,7 +64,9 @@ class TNTData(Dataset):
         self.random_crop = random_crop
         self.transform = transforms.ToTensor()
         self.resize = scale1
-        self.images, self.groundtruth = load_dataset(self.root_dir, self.train)
+        if self.inference and self.train:
+            raise ValueError("Cannot set inference and training at the same time")
+        self.images, self.groundtruth = load_dataset(self.root_dir, self.train, self.inference)
 
     def __len__(self):
         return len(self.images)
@@ -98,9 +108,11 @@ class TNTData(Dataset):
         data = (data - data.min()) / (data.max() - data.min())
         data *= 255
         image = Image.fromarray(np.repeat(data[..., np.newaxis], 3, axis=2).astype(np.uint8))
-        label = Image.fromarray((self.groundtruth[idx] > 0.0).astype(bool))
+        if not self.inference:
+            label = Image.fromarray((self.groundtruth[idx] > 0.0).astype(bool))
         image = ReScaleSize(image, self.resize)
-        label = ReScaleSize(label, self.resize)
+        if not self.inference:
+            label = ReScaleSize(label, self.resize)
 
         if self.train:
             # augumentation
@@ -122,10 +134,14 @@ class TNTData(Dataset):
             img_size = image.size
             if img_size[0] != self.resize:
                 image = image.resize((self.resize, self.resize))
-                label = label.resize((self.resize, self.resize))
+                if not self.inference:
+                    label = label.resize((self.resize, self.resize))
 
         image = self.transform(image)
-        label = self.transform(label)
+        if not self.inference:
+            label = self.transform(label)
+            return image, label
+        return image  # Inference
 
         # import matplotlib.pyplot as plt
         # plt.imshow(np.transpose(image, (1, 2, 0)))
