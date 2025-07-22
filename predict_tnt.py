@@ -1,11 +1,13 @@
 import torch
 from torchvision import transforms
 from PIL import Image
+import tifffile
 
 import numpy as np
 import os
 from dataloader.tnt import load_dataset, TNTData
 from torch.utils.data import DataLoader
+from utils.train_metrics import metrics, threshold
 
 DATABASE = '/home/xpetrus/DP/Datasets/TNT_data/tnt_dataset_csnet_2dsplit'
 args = {
@@ -49,11 +51,18 @@ def save_imgs(pred, prefix=''):
     save_path = args['pred_path']
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-    if pred.ndim != 3:
-        raise ValueError("Expected an array of 2D grayscale images")
+    if pred.ndim == 3:
+        pass
+    elif pred.ndim == 4 and pred.shape[1] == 3:
+        pred = pred.transpose((0, 2, 3, 1))  # Move colour last
+        pass
+    else:
+        raise ValueError("Expected an array of 2D grayscale images or 3D images")
     for z_idx in range(pred.shape[0]):
-        img = Image.fromarray(pred[z_idx, ...])
-        img.save(os.path.join(save_path, f"{prefix}_{z_idx}.tif"))
+        # img = Image.fromarray(np.round(pred[z_idx, ...] * 255))
+        # img.save(os.path.join(save_path, f"{prefix}_{z_idx}.tif"))
+        tifffile.imwrite(os.path.join(save_path, f"{prefix}_{z_idx}.tif"), pred[z_idx, ...])
+        
 
 def predict(device="cpu"):
     net = load_net(args['checkpoint_path']).to(device)
@@ -68,21 +77,28 @@ def predict(device="cpu"):
     with torch.no_grad():
         for batch_idx, (img, mask) in enumerate(dataloader):
             img_dev = img.to(device)
-            output = torch.sigmoid(net(img_dev)).detach().cpu()
-            thresholded = output > 0.5
-            mask = mask.cpu()
-            TP += ((thresholded == True) & (mask == True)).float().sum()
-            TN += ((thresholded == False) & (mask == False)).float().sum()
-            FP += ((thresholded == True) & (mask == False)).float().sum()
-            FN += ((thresholded == False) & (mask == True)).float().sum()
+        
+            raw_pred = net(img_dev)
+            outputs = (raw_pred.data.cpu().numpy() * 255).astype(np.uint8)
+            labels = (mask.data.cpu().numpy() * 255).astype(np.uint8)
+            outputs = outputs.squeeze(1)
+            labels = labels.squeeze(1)
+            thresholded = threshold(outputs)
+
+            TP += np.sum((thresholded == 255) & (labels == 255))
+            TN += np.sum((thresholded == 0) & (labels == 0))
+            FP += np.sum((thresholded == 255) & (labels == 0))
+            FN += np.sum((thresholded == 0) & (labels == 255))
 
             # Save the predictions
-            print(f"output shape {output.shape}")
-            print(f"mask shape {mask.shape}")
+            print(f"raw pred shape {raw_pred.shape}")
+            print(f"mask shape {labels.shape}")
             print(f"max value in batch data {img.max()}")
-            print(f" in label {mask.max()}")
-            save_imgs(output.squeeze(1).numpy(), str(batch_idx))  # remove fake channel
-            save_imgs(thresholded.squeeze(1).numpy(), f'{batch_idx}-thresh')
+            print(f" in label {labels.max()}")
+            save_imgs(img.numpy(), f'{batch_idx}-img')
+            save_imgs(outputs, f'{batch_idx}-outputs')  # remove fake channel
+            save_imgs(thresholded, f'{batch_idx}-thresh')
+            save_imgs(labels, f'{batch_idx}-labels')
 
     
     # Evaluate
@@ -95,10 +111,6 @@ def predict(device="cpu"):
     print(f"Metrics:\n"
           f"Accuracy: {accuracy*100:.2f}%\n"
           f"Precision: {precision*100:.2f}%\n"
-          f"Recall: {recall*100:.2f}%")
-    print(f"Metrics:"
-          f"Accuracy: {accuracy*100:.2f}%"
-          f"Precision: {precision*100:.2f}%"
           f"Recall: {recall*100:.2f}%")
        
 
