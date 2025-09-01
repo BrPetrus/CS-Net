@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=3
 echo "Current CUDA setting ${CUDA_VISIBLE_DEVICES}"
 
 TIME=$((4*3600))
