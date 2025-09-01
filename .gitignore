@@ -1,2 +1,9 @@
 
 .DS_Store
+checkpoint*
+0-fold
+202*
+__pycache__
+predictions*
+results
+.vscode
